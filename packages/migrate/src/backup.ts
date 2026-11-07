@@ -20,11 +20,7 @@ export interface BackupManifest {
 }
 
 /** Files that must be copied before touching a host store. */
-export function backupTargets(
-  host: HostId,
-  paths: HostPaths,
-  extra: string[] = [],
-): string[] {
+export function backupTargets(host: HostId, paths: HostPaths, extra: string[] = []): string[] {
   if (host === "qoder") {
     const db = paths.qoderDesktopDb;
     return [db, `${db}-wal`, `${db}-shm`, ...extra];
@@ -62,7 +58,9 @@ export async function createBackup(
     if (!info.isFile()) continue;
     const copy = join(dir, `${String(index).padStart(2, "0")}-${basename(original)}`);
     await copyFile(original, copy);
-    const digest = createHash("sha256").update(await readFile(copy)).digest("hex");
+    const digest = createHash("sha256")
+      .update(await readFile(copy))
+      .digest("hex");
     manifest.files.push({ original, copy, existed: true, size: info.size, sha256: digest });
     index += 1;
   }

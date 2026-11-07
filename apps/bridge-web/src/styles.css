@@ -60,7 +60,12 @@ body,
 body {
   background: var(--bg);
   color: var(--text);
-  font: 13px/1.55 "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  font:
+    13px / 1.55 "Segoe UI",
+    "Microsoft YaHei",
+    system-ui,
+    -apple-system,
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }

@@ -49,6 +49,7 @@ export function SessionList({ sessions, selected, text, onText, onSelect, diverg
                 selected?.host === session.host && selected.nativeId === session.nativeId;
               return (
                 <button
+                  type="button"
                   key={session.id}
                   className={`session-card ${isSelected ? "selected" : ""}`}
                   onClick={() => onSelect(session)}

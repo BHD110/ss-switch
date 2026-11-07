@@ -1,7 +1,18 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
   "files": {
-    "includes": ["**", "!**/dist/**", "!**/node_modules/**", "!**/fixtures/**", "!**/*.db"]
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/node_modules",
+      "!**/.tmp",
+      "!**/.shots",
+      "!**/release",
+      "!**/fixtures",
+      "!**/*.db",
+      "!**/*.cjs",
+      "!**/boot.log"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -21,14 +32,20 @@
     "rules": {
       "recommended": true,
       "correctness": {
-        "noUnusedVariables": "warn"
+        "noUnusedVariables": "warn",
+        "useExhaustiveDependencies": "warn"
       },
       "style": {
         "noNonNullAssertion": "off",
-        "useConst": "error"
+        "useConst": "error",
+        "noDescendingSpecificity": "off"
       },
       "suspicious": {
         "noExplicitAny": "warn"
+      },
+      "a11y": {
+        "noStaticElementInteractions": "off",
+        "useKeyWithClickEvents": "off"
       }
     }
   }

@@ -1,6 +1,4 @@
 import { existsSync } from "node:fs";
-import { DatabaseSync, type Database } from "../sqlite";
-
 import type {
   HostStatus,
   PartKind,
@@ -9,11 +7,21 @@ import type {
   StoredSession,
   StoredTurn,
 } from "@bridge/contracts";
-
 import { zcodeDbPath, zcodeTasksDbPath } from "../paths";
+import { type Database, DatabaseSync } from "../sqlite";
 import type { HostAdapter, HostPaths } from "../types";
 import { emptyCapabilities } from "../types";
-import { asArray, asRecord, firstString, num, sha256, stableId, str, titleFromText, truncate } from "../util";
+import {
+  asArray,
+  asRecord,
+  firstString,
+  num,
+  sha256,
+  stableId,
+  str,
+  titleFromText,
+  truncate,
+} from "../util";
 
 interface SessionRow {
   id: string;
@@ -77,7 +85,7 @@ export class ZcodeReader implements HostAdapter {
     if (dbExists) {
       sessions = known ?? (await this.scan());
       version = sessions.length
-        ? (await this.sessionVersion(sessions[0]!.nativeId)) ?? undefined
+        ? ((await this.sessionVersion(sessions[0]!.nativeId)) ?? undefined)
         : undefined;
     }
     return {
@@ -117,7 +125,9 @@ export class ZcodeReader implements HostAdapter {
     let db: Database | undefined;
     try {
       db = new DatabaseSync(path, { readOnly: true });
-      for (const row of db.prepare("SELECT task_id FROM tasks WHERE deleted=0").all() as unknown as {
+      for (const row of db
+        .prepare("SELECT task_id FROM tasks WHERE deleted=0")
+        .all() as unknown as {
         task_id: string;
       }[]) {
         ids.add(row.task_id);
@@ -170,7 +180,8 @@ export class ZcodeReader implements HostAdapter {
           updatedAt: row.time_updated,
           rawRef: `${zcodeDbPath(this.paths)}#${row.id}`,
           fingerprint: `z:${row.time_updated}:${row.message_count}`,
-          desktopVisible: visible.has(row.id) || visible.has(`sess_${row.id.replace(/^session_/, "")}`),
+          desktopVisible:
+            visible.has(row.id) || visible.has(`sess_${row.id.replace(/^session_/, "")}`),
           counts: { turns: 0, parts: 0 },
         });
       }
@@ -295,12 +306,11 @@ export class ZcodeReader implements HostAdapter {
       // Attach tool outputs to calls; ZCode already stores both in one part.
       for (const turn of turns) {
         const own = parts.filter((part) => part.turnId === turn.id);
-        turn.outcome =
-          own.some((part) => part.toolState === "error")
-            ? "failed"
-            : own.some((part) => part.kind === "tool_call")
-              ? "tool-calls"
-              : "completed";
+        turn.outcome = own.some((part) => part.toolState === "error")
+          ? "failed"
+          : own.some((part) => part.kind === "tool_call")
+            ? "tool-calls"
+            : "completed";
         turn.endedAt ??= turn.startedAt;
       }
 
@@ -398,7 +408,13 @@ function pushLoadedPart(
         toolName: tool,
         toolCallId: str(data.callID),
         toolState:
-          status === "error" ? "error" : status === "completed" ? "ok" : status ? "running" : "pending",
+          status === "error"
+            ? "error"
+            : status === "completed"
+              ? "ok"
+              : status
+                ? "running"
+                : "pending",
       });
       return;
     }
@@ -420,9 +436,17 @@ function pushLoadedPart(
     default:
       if (data.text) push("text", role, str(data.text), data, { nativePartId });
       else if (asArray(data.content).length) {
-        push("text", role, asArray(data.content).map((item) => str(asRecord(item)?.text) ?? "").join(""), data, {
-          nativePartId,
-        });
+        push(
+          "text",
+          role,
+          asArray(data.content)
+            .map((item) => str(asRecord(item)?.text) ?? "")
+            .join(""),
+          data,
+          {
+            nativePartId,
+          },
+        );
       }
   }
 }

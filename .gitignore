@@ -8,3 +8,4 @@ bridge.db
 bridge.db-wal
 bridge.db-shm
 backups/
+release/

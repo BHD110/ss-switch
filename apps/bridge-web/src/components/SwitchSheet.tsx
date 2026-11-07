@@ -1,5 +1,3 @@
-import { useEffect, useMemo, useState } from "react";
-
 import type {
   HostId,
   HostStatus,
@@ -9,9 +7,10 @@ import type {
   StoredSession,
   TxSummary,
 } from "@bridge/contracts";
+import { useEffect, useMemo, useState } from "react";
 
 import { bridge } from "../api";
-import { HOST_LABEL, fidelityLabel, num, shortPath } from "../format";
+import { fidelityLabel, HOST_LABEL, num, shortPath } from "../format";
 
 interface Props {
   open: boolean;
@@ -50,7 +49,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
     setResult(undefined);
     setError(undefined);
     setCopied(false);
-  }, [open, source?.id]);
+  }, [open, source]);
 
   const candidates = useMemo<Candidate[]>(() => {
     if (!source) return [];
@@ -61,7 +60,9 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
       const dst = tx.dst ?? "";
       if (src === sourceRef && dst.startsWith(`${targetHost}:`)) {
         const nativeId = dst.slice(targetHost.length + 1);
-        const title = sessions.find((item) => item.host === targetHost && item.nativeId === nativeId)?.title;
+        const title = sessions.find(
+          (item) => item.host === targetHost && item.nativeId === nativeId,
+        )?.title;
         found.set(nativeId, {
           host: targetHost,
           nativeId,
@@ -69,7 +70,9 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
         });
       } else if (dst === sourceRef && src.startsWith(`${targetHost}:`)) {
         const nativeId = src.slice(targetHost.length + 1);
-        const title = sessions.find((item) => item.host === targetHost && item.nativeId === nativeId)?.title;
+        const title = sessions.find(
+          (item) => item.host === targetHost && item.nativeId === nativeId,
+        )?.title;
         found.set(nativeId, {
           host: targetHost,
           nativeId,
@@ -78,7 +81,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
       }
     }
     return [...found.values()];
-  }, [history, source?.id, sourceRef, targetHost, sessions]);
+  }, [history, source?.id, sourceRef, targetHost, sessions, source]);
 
   const targetStatus = hosts.find((host) => host.id === targetHost);
 
@@ -87,7 +90,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
     if (mode === "overwrite" && !targetNativeId && candidates.length === 1) {
       setTargetNativeId(candidates[0]!.nativeId);
     }
-  }, [open, mode, candidates, targetNativeId, source?.id]);
+  }, [open, mode, candidates, targetNativeId, source?.id, source]);
 
   useEffect(() => {
     if (!open || !source) return;
@@ -106,7 +109,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
         .catch((cause: unknown) => setError(String(cause)));
     }, 350);
     return () => clearTimeout(timer);
-  }, [open, source?.id, targetHost, mode, targetNativeId, source?.host, source?.nativeId]);
+  }, [open, source?.id, targetHost, mode, targetNativeId, source?.host, source?.nativeId, source]);
 
   if (!open || !source) return null;
 
@@ -174,7 +177,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
               {HOST_LABEL[source.host]} · {shortPath(source.cwd, 2)}
             </div>
           </div>
-          <button className="icon-button" onClick={onClose} title="关闭">
+          <button type="button" className="icon-button" onClick={onClose} title="关闭">
             关闭
           </button>
         </header>
@@ -194,7 +197,8 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
                   <div className="kv">
                     <span>写入内容</span>
                     <span>
-                      {num(result.turns)} 轮 · {num(result.parts)} 条 · {fidelityLabel(result.fidelity)}
+                      {num(result.turns)} 轮 · {num(result.parts)} 条 ·{" "}
+                      {fidelityLabel(result.fidelity)}
                     </span>
                   </div>
                   {result.backupDir && (
@@ -224,15 +228,15 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
             <div className="sheet-actions">
               {result.ok && (
                 <>
-                  <button className="primary" onClick={copyCommand}>
+                  <button type="button" className="primary" onClick={copyCommand}>
                     {copied ? "命令已复制" : "复制打开命令"}
                   </button>
-                  <button className="ghost" onClick={undo} disabled={busy}>
+                  <button type="button" className="ghost" onClick={undo} disabled={busy}>
                     撤销这次导入
                   </button>
                 </>
               )}
-              <button className="ghost" onClick={onClose}>
+              <button type="button" className="ghost" onClick={onClose}>
                 完成
               </button>
             </div>
@@ -244,6 +248,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
               <div className="segmented">
                 {(["qoder", "zcode"] as HostId[]).map((host) => (
                   <button
+                    type="button"
                     key={host}
                     className={targetHost === host ? "seg active" : "seg"}
                     onClick={() => {
@@ -322,7 +327,9 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
                   </div>
                   <div className="plan-row">
                     <span>保真度</span>
-                    <span className={`fidelity ${plan.fidelity}`}>{fidelityLabel(plan.fidelity)}</span>
+                    <span className={`fidelity ${plan.fidelity}`}>
+                      {fidelityLabel(plan.fidelity)}
+                    </span>
                   </div>
                   <div className="plan-row">
                     <span>备份</span>
@@ -361,15 +368,16 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
             {error && <div className="error-box">{error}</div>}
 
             <div className="sheet-actions">
-              <button className="primary" onClick={confirm} disabled={blocked}>
+              <button type="button" className="primary" onClick={confirm} disabled={blocked}>
                 {busy ? "写入中…" : mode === "overwrite" ? "覆盖并写入" : "写入新副本"}
               </button>
-              <button className="ghost" onClick={onClose} disabled={busy}>
+              <button type="button" className="ghost" onClick={onClose} disabled={busy}>
                 取消
               </button>
             </div>
             <div className="hint">
-              写入前会自动备份目标数据库；写入后需要重启目标 Agent 才能看到新会话。源会话不会被修改。
+              写入前会自动备份目标数据库；写入后需要重启目标 Agent
+              才能看到新会话。源会话不会被修改。
             </div>
           </div>
         )}

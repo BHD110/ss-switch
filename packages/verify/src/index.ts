@@ -1,11 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
-import { DatabaseSync } from "./sqlite";
-
 import type { HostId } from "@bridge/contracts";
+import type { HostPaths } from "@bridge/hosts";
 
 import { zcodeDbPath, zcodeTasksDbPath } from "@bridge/hosts";
-
-import type { HostPaths } from "@bridge/hosts";
+import { DatabaseSync } from "./sqlite";
 
 export interface VerificationCheck {
   name: string;
@@ -34,7 +32,9 @@ export function verifyQoder(
     const db = new DatabaseSync(paths.qoderDesktopDb, { readOnly: true });
     try {
       const session = db
-        .prepare("SELECT session_id, title, message_envelope_version FROM chat_sessions WHERE session_id=?")
+        .prepare(
+          "SELECT session_id, title, message_envelope_version FROM chat_sessions WHERE session_id=?",
+        )
         .get(nativeId) as
         | { session_id: string; title: string; message_envelope_version: number }
         | undefined;
@@ -101,24 +101,24 @@ export function verifyZcode(
       .get(nativeId) as { id: string; title: string } | undefined;
     checks.push({ name: "session-row", ok: Boolean(session), detail: session?.title ?? "missing" });
     const messages = db
-      .prepare("SELECT COUNT(*) AS c, MIN(sequence) AS lo, MAX(sequence) AS hi FROM message WHERE session_id=?")
+      .prepare(
+        "SELECT COUNT(*) AS c, MIN(sequence) AS lo, MAX(sequence) AS hi FROM message WHERE session_id=?",
+      )
       .get(nativeId) as { c: number; lo: number | null; hi: number | null };
     checks.push({
       name: "message-count",
       ok: messages.c === expected.messages,
       detail: `${messages.c}/${expected.messages} sequence ${messages.lo}..${messages.hi}`,
     });
-    const contiguous =
-      messages.c === 0 ||
-      (messages.lo === 0 && messages.hi === messages.c - 1);
+    const contiguous = messages.c === 0 || (messages.lo === 0 && messages.hi === messages.c - 1);
     checks.push({
       name: "message-sequence",
       ok: contiguous,
       detail: contiguous ? "contiguous" : "sequence has gaps",
     });
-    const parts = db
-      .prepare("SELECT COUNT(*) AS c FROM part WHERE session_id=?")
-      .get(nativeId) as { c: number };
+    const parts = db.prepare("SELECT COUNT(*) AS c FROM part WHERE session_id=?").get(nativeId) as {
+      c: number;
+    };
     checks.push({
       name: "part-count",
       ok: parts.c === expected.parts,

@@ -1,16 +1,13 @@
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import { statSync } from "node:fs";
-import { basename } from "node:path";
-import { DatabaseSync, type Database } from "../sqlite";
+import { existsSync, statSync } from "node:fs";
+import { basename, resolve } from "node:path";
 import { promisify } from "node:util";
-
 import type { SessionDetail, StoredPart, StoredTurn } from "@bridge/contracts";
-
-import { sha256 } from "../util";
-import { zcodeDbPath, zcodeTasksDbPath } from "../paths";
+import { zcodeDbPath, zcodeDbPathForGuard, zcodeTasksDbPath } from "../paths";
+import { type Database, DatabaseSync } from "../sqlite";
 import type { HostPaths, HostWriter, WriteOptions, WriteOutcome } from "../types";
+import { sha256 } from "../util";
 
 const execFileAsync = promisify(execFile);
 const KNOWN_SCHEMA = 24;
@@ -39,14 +36,35 @@ export class ZcodeWriter implements HostWriter {
     const db = new DatabaseSync(this.dbPath(), { readOnly: true });
     try {
       const required: Record<string, string[]> = {
-        session: ["id", "project_id", "slug", "directory", "title", "version", "time_created", "time_updated", "task_type"],
+        session: [
+          "id",
+          "project_id",
+          "slug",
+          "directory",
+          "title",
+          "version",
+          "time_created",
+          "time_updated",
+          "task_type",
+        ],
         message: ["id", "session_id", "time_created", "time_updated", "data", "sequence"],
-        part: ["id", "message_id", "session_id", "time_created", "time_updated", "data", "sequence"],
+        part: [
+          "id",
+          "message_id",
+          "session_id",
+          "time_created",
+          "time_updated",
+          "data",
+          "sequence",
+        ],
         session_entry: ["id", "session_id", "type", "time_created", "time_updated", "data"],
       };
       for (const [table, columns] of Object.entries(required)) {
         const present = new Set(
-          db.prepare(`PRAGMA table_info(${table})`).all().map((row) => String((row as { name: string }).name)),
+          db
+            .prepare(`PRAGMA table_info(${table})`)
+            .all()
+            .map((row) => String((row as { name: string }).name)),
         );
         for (const column of columns) {
           if (!present.has(column)) {
@@ -54,9 +72,9 @@ export class ZcodeWriter implements HostWriter {
           }
         }
       }
-      const latest = db
-        .prepare("SELECT id FROM schema_migration ORDER BY id DESC LIMIT 1")
-        .get() as { id: string } | undefined;
+      const latest = db.prepare("SELECT id FROM schema_migration ORDER BY id DESC LIMIT 1").get() as
+        | { id: string }
+        | undefined;
       const number = latest ? Number(latest.id.slice(0, 4)) : 0;
       if (Number.isFinite(number) && number > KNOWN_SCHEMA) {
         throw new Error(
@@ -71,7 +89,10 @@ export class ZcodeWriter implements HostWriter {
       const tasksDb = new DatabaseSync(index, { readOnly: true });
       try {
         const columns = new Set(
-          tasksDb.prepare("PRAGMA table_info(tasks)").all().map((row) => String((row as { name: string }).name)),
+          tasksDb
+            .prepare("PRAGMA table_info(tasks)")
+            .all()
+            .map((row) => String((row as { name: string }).name)),
         );
         for (const column of ["workspace_key", "task_id", "title", "task_status", "meta_json"]) {
           if (!columns.has(column)) {
@@ -85,9 +106,16 @@ export class ZcodeWriter implements HostWriter {
   }
 
   async isBusy(): Promise<boolean> {
+    if (resolve(this.dbPath()) !== resolve(zcodeDbPathForGuard())) {
+      return false;
+    }
     if (process.platform === "win32") {
       try {
-        const { stdout } = await execFileAsync("tasklist", ["/FI", "IMAGENAME eq ZCode.exe", "/NH"]);
+        const { stdout } = await execFileAsync("tasklist", [
+          "/FI",
+          "IMAGENAME eq ZCode.exe",
+          "/NH",
+        ]);
         if (stdout.toLowerCase().includes("zcode.exe")) return true;
       } catch {
         // Fall through to the WAL heuristic.
@@ -123,7 +151,9 @@ export class ZcodeWriter implements HostWriter {
         const index = new DatabaseSync(zcodeTasksDbPath(this.paths), { readOnly: true });
         try {
           const task = index
-            .prepare("SELECT updated_at FROM tasks WHERE task_id=? ORDER BY updated_at DESC LIMIT 1")
+            .prepare(
+              "SELECT updated_at FROM tasks WHERE task_id=? ORDER BY updated_at DESC LIMIT 1",
+            )
             .get(nativeId) as { updated_at: number } | undefined;
           taskUpdated = task?.updated_at ?? 0;
         } finally {
@@ -229,7 +259,10 @@ export class ZcodeWriter implements HostWriter {
       openCommand: `zcode --resume ${nativeId}`,
       steps: [
         { step: "main-db", detail: `${this.dbPath()} session/message/part/session_entry` },
-        { step: "task-index", detail: `${zcodeTasksDbPath(this.paths)} tasks/projects/project_roots` },
+        {
+          step: "task-index",
+          detail: `${zcodeTasksDbPath(this.paths)} tasks/projects/project_roots`,
+        },
       ],
     };
   }
@@ -245,9 +278,9 @@ export class ZcodeWriter implements HostWriter {
     const plan = this.buildPlan(detail, nativeId, cwd, title);
     try {
       db.exec("BEGIN IMMEDIATE");
-      const row = db
-        .prepare("SELECT id FROM session WHERE id=?")
-        .get(nativeId) as { id: string } | undefined;
+      const row = db.prepare("SELECT id FROM session WHERE id=?").get(nativeId) as
+        | { id: string }
+        | undefined;
       if (!row) throw new Error("Target ZCode session no longer exists");
       db.prepare("DELETE FROM message WHERE session_id=?").run(nativeId);
       db.prepare(
@@ -348,7 +381,9 @@ export class ZcodeWriter implements HostWriter {
           if (parsed.mode) permission = parsed.mode;
         } else {
           const row = db
-            .prepare("SELECT permission FROM session WHERE permission IS NOT NULL ORDER BY time_updated DESC LIMIT 1")
+            .prepare(
+              "SELECT permission FROM session WHERE permission IS NOT NULL ORDER BY time_updated DESC LIMIT 1",
+            )
             .get() as { permission: string } | undefined;
           if (row) {
             const parsed = JSON.parse(row.permission) as { mode?: string };
@@ -384,7 +419,7 @@ export class ZcodeWriter implements HostWriter {
 
   private buildPlan(
     detail: SessionDetail,
-    nativeId: string,
+    _nativeId: string,
     cwd: string,
     title: string,
   ): {
@@ -407,7 +442,9 @@ export class ZcodeWriter implements HostWriter {
     const turns = [...detail.turns].sort((a, b) => a.ord - b.ord);
 
     for (const turn of turns) {
-      const turnParts = detail.parts.filter((part) => part.turnId === turn.id).sort((a, b) => a.ord - b.ord);
+      const turnParts = detail.parts
+        .filter((part) => part.turnId === turn.id)
+        .sort((a, b) => a.ord - b.ord);
       const userText = turnParts
         .filter((part) => part.kind === "text" && part.role === "user")
         .map((part) => part.text ?? "")
@@ -448,9 +485,7 @@ export class ZcodeWriter implements HostWriter {
 
       if (!assistantParts.length) continue;
       const assistantMessageId = `msg_${Date.now().toString(36)}_${randomUUID()}`;
-      const parts: PlannedPart[] = [
-        { id: partId("step-start"), data: { type: "step-start" } },
-      ];
+      const parts: PlannedPart[] = [{ id: partId("step-start"), data: { type: "step-start" } }];
       for (const part of assistantParts) {
         const converted = toZcodePart(part, turn);
         if (!converted) {
@@ -465,13 +500,20 @@ export class ZcodeWriter implements HostWriter {
         id: assistantMessageId,
         sequence: sequence++,
         role: "assistant",
-        data: baseMessageData("assistant", turn.endedAt || turn.startedAt, cwd, userMessageId, selection, {
-          origin: "agent_runtime",
-          kind: "assistant_response",
-          uiVisibility: "visible",
-          providerVisibility: "visible",
-          transcriptVisibility: "visible",
-        }),
+        data: baseMessageData(
+          "assistant",
+          turn.endedAt || turn.startedAt,
+          cwd,
+          userMessageId,
+          selection,
+          {
+            origin: "agent_runtime",
+            kind: "assistant_response",
+            uiVisibility: "visible",
+            providerVisibility: "visible",
+            transcriptVisibility: "visible",
+          },
+        ),
         parts,
       });
       partTotal += parts.length;
@@ -491,7 +533,16 @@ export class ZcodeWriter implements HostWriter {
           providerVisibility: "visible",
           transcriptVisibility: "visible",
         }),
-        parts: [{ id: partId("text"), data: { type: "text", text: "(empty session)", time: { start: Date.now(), end: Date.now() } } }],
+        parts: [
+          {
+            id: partId("text"),
+            data: {
+              type: "text",
+              text: "(empty session)",
+              time: { start: Date.now(), end: Date.now() },
+            },
+          },
+        ],
       });
       partTotal += 1;
       warnings.push("Source had no readable messages; wrote an empty placeholder turn");
@@ -511,11 +562,7 @@ export class ZcodeWriter implements HostWriter {
     };
   }
 
-  private insertMessages(
-    db: Database,
-    nativeId: string,
-    messages: PlannedMessage[],
-  ): void {
+  private insertMessages(db: Database, nativeId: string, messages: PlannedMessage[]): void {
     const messageStmt = db.prepare(
       "INSERT INTO message(id, session_id, time_created, time_updated, data, sequence) VALUES(?,?,?,?,?,?)",
     );
@@ -570,16 +617,26 @@ export class ZcodeWriter implements HostWriter {
       let projectId = existingRoot?.project_id;
       if (!projectId) {
         const host = db.prepare("SELECT host_id FROM hosts WHERE host_id='local'").get();
-        if (!host) db.prepare("INSERT INTO hosts(host_id, kind, position) VALUES('local','local',0)").run();
+        if (!host)
+          db.prepare("INSERT INTO hosts(host_id, kind, position) VALUES('local','local',0)").run();
         const position = (
-          db.prepare("SELECT COALESCE(MAX(position),-1)+1 AS p FROM projects").get() as { p: number }
+          db.prepare("SELECT COALESCE(MAX(position),-1)+1 AS p FROM projects").get() as {
+            p: number;
+          }
         ).p;
         projectId = randomUUID();
         db.prepare(
           `INSERT INTO projects(project_id, host_id, name, name_overridden, position, pinned, deleted,
                                 created_at, updated_at)
            VALUES(?,? ,?,0,?,0,0,?,?)`,
-        ).run(projectId, "local", basename(input.cwd) || "project", position, input.createdAt, input.updatedAt);
+        ).run(
+          projectId,
+          "local",
+          basename(input.cwd) || "project",
+          position,
+          input.createdAt,
+          input.updatedAt,
+        );
         db.prepare(
           "INSERT INTO project_roots(project_id, root_path, position, is_primary) VALUES(?,?,0,1)",
         ).run(projectId, input.cwd);
@@ -719,12 +776,23 @@ function toZcodePart(part: StoredPart, turn: StoredTurn): PlannedPart | undefine
     case "image":
       return {
         id: partId("file"),
-        data: { type: "file", filename: part.text ?? "attachment", path: null, time: { start, end } },
+        data: {
+          type: "file",
+          filename: part.text ?? "attachment",
+          path: null,
+          time: { start, end },
+        },
       };
     case "timeline":
       return {
         id: partId("timeline"),
-        data: { type: "timeline", timelineType: "bridge_import", display: "separator", status: "completed", time: { start, end } },
+        data: {
+          type: "timeline",
+          timelineType: "bridge_import",
+          display: "separator",
+          status: "completed",
+          time: { start, end },
+        },
       };
     default:
       return undefined;
@@ -741,7 +809,10 @@ function partId(kind: string): string {
 }
 
 function projectId(cwd: string): string {
-  const slug = cwd.replace(/^.*[\\/]/, "").replace(/[^A-Za-z0-9_-]/g, "-").toLowerCase();
+  const slug = cwd
+    .replace(/^.*[\\/]/, "")
+    .replace(/[^A-Za-z0-9_-]/g, "-")
+    .toLowerCase();
   return `proj_${slug || "default"}`;
 }
 
@@ -764,7 +835,11 @@ function increment(
 
 function assistantPartsMissing(detail: SessionDetail): boolean {
   return detail.parts.some(
-    (part) => part.role === "assistant" && part.kind !== "text" && part.kind !== "reasoning" && part.kind !== "tool_call",
+    (part) =>
+      part.role === "assistant" &&
+      part.kind !== "text" &&
+      part.kind !== "reasoning" &&
+      part.kind !== "tool_call",
   );
 }
 

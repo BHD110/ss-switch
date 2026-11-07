@@ -1,8 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { DatabaseSync, type Database } from "./sqlite";
-
 import type {
   DivergenceInfo,
   Fidelity,
@@ -20,6 +18,7 @@ import type {
   StoredTurn,
   TxSummary,
 } from "@bridge/contracts";
+import { type Database, DatabaseSync } from "./sqlite";
 
 const SCHEMA_VERSION = 2;
 
@@ -228,7 +227,9 @@ export class BridgeStore {
         // Only drop rows that were never imported by Bridge; lineage targets
         // must survive even when a host hides them from its own list.
         const used = this.db
-          .prepare("SELECT 1 FROM lineage WHERE (src_host=? AND src_session_id=?) OR (dst_host=? AND dst_session_id=?)")
+          .prepare(
+            "SELECT 1 FROM lineage WHERE (src_host=? AND src_session_id=?) OR (dst_host=? AND dst_session_id=?)",
+          )
           .get(host, row.id, host, row.id);
         if (used) continue;
         this.db.prepare("DELETE FROM session WHERE id=?").run(row.id);
@@ -360,6 +361,7 @@ export class BridgeStore {
           JSON.stringify(part.payload ?? null),
           part.hash,
           part.sourceRef ?? null,
+          part.mergedInto ?? null,
         );
       }
       this.db
@@ -417,15 +419,20 @@ export class BridgeStore {
     return id;
   }
 
+  updateLineageSrcFingerprint(lineageId: string, fingerprint: string): void {
+    this.db.prepare("UPDATE lineage SET src_fp_at_import=? WHERE id=?").run(fingerprint, lineageId);
+  }
+
   updateLineageDstFingerprint(lineageId: string, fingerprint: string): void {
-    this.db
-      .prepare("UPDATE lineage SET dst_fp_at_import=? WHERE id=?")
-      .run(fingerprint, lineageId);
+    this.db.prepare("UPDATE lineage SET dst_fp_at_import=? WHERE id=?").run(fingerprint, lineageId);
   }
 
   listLineage(): LineageRecord[] {
-    return (this.db.prepare("SELECT * FROM lineage ORDER BY created_at DESC").all() as unknown as
-      LineageRow[]).map(lineageFromRow);
+    return (
+      this.db
+        .prepare("SELECT * FROM lineage ORDER BY created_at DESC")
+        .all() as unknown as LineageRow[]
+    ).map(lineageFromRow);
   }
 
   /** A lineage whose source or destination is this session. */
@@ -450,7 +457,9 @@ export class BridgeStore {
 
   lineageForTarget(host: HostId, nativeId: string): LineageRecord | undefined {
     const row = this.db
-      .prepare("SELECT * FROM lineage WHERE dst_host=? AND dst_session_id=? ORDER BY created_at DESC LIMIT 1")
+      .prepare(
+        "SELECT * FROM lineage WHERE dst_host=? AND dst_session_id=? ORDER BY created_at DESC LIMIT 1",
+      )
       .get(host, nativeId) as LineageRow | undefined;
     return row ? lineageFromRow(row) : undefined;
   }
@@ -482,21 +491,23 @@ export class BridgeStore {
 
   listDivergence(): DivergenceInfo[] {
     return (
-      this.db.prepare("SELECT * FROM divergence ORDER BY detected_at DESC LIMIT 500").all() as unknown as DivergenceRow[]
+      this.db
+        .prepare("SELECT * FROM divergence ORDER BY detected_at DESC LIMIT 500")
+        .all() as unknown as DivergenceRow[]
     ).map((row) => {
-        const r = row;
-        const lineage = this.db
-          .prepare("SELECT * FROM lineage WHERE id=?")
-          .get(r.lineage_id) as LineageRow | undefined;
-        return {
-          lineageId: r.lineage_id,
-          srcHost: (lineage?.src_host ?? "qoder") as HostId,
-          dstHost: (lineage?.dst_host ?? "zcode") as HostId,
-          srcChanged: r.side === "src",
-          dstChanged: r.side === "dst",
-          detectedAt: r.detected_at,
-        };
-      });
+      const r = row;
+      const lineage = this.db.prepare("SELECT * FROM lineage WHERE id=?").get(r.lineage_id) as
+        | LineageRow
+        | undefined;
+      return {
+        lineageId: r.lineage_id,
+        srcHost: (lineage?.src_host ?? "qoder") as HostId,
+        dstHost: (lineage?.dst_host ?? "zcode") as HostId,
+        srcChanged: r.side === "src",
+        dstChanged: r.side === "dst",
+        detectedAt: r.detected_at,
+      };
+    });
   }
 
   // ------------------------------------------------------------------- tx
@@ -549,8 +560,11 @@ export class BridgeStore {
   }
 
   listTx(): TxSummary[] {
-    return (this.db.prepare("SELECT * FROM tx ORDER BY started_at DESC LIMIT 200").all() as unknown as
-      TxRow[]).map(txFromRow);
+    return (
+      this.db
+        .prepare("SELECT * FROM tx ORDER BY started_at DESC LIMIT 200")
+        .all() as unknown as TxRow[]
+    ).map(txFromRow);
   }
 
   getTx(id: string): TxSummary | undefined {
@@ -577,7 +591,9 @@ export class BridgeStore {
 
   setSetting(key: string, value: string): void {
     this.db
-      .prepare("INSERT INTO settings(key, value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+      .prepare(
+        "INSERT INTO settings(key, value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      )
       .run(key, value);
   }
 

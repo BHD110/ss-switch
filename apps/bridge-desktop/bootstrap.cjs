@@ -7,8 +7,12 @@ const log = (message) => {
   } catch {}
 };
 log(`bootstrap start cwd=${process.cwd()} argv=${process.argv.join(" ")}`);
-process.on("uncaughtException", (error) => log(`uncaught ${error && error.stack ? error.stack : error}`));
-process.on("unhandledRejection", (error) => log(`rejection ${error && error.stack ? error.stack : error}`));
+process.on("uncaughtException", (error) =>
+  log(`uncaught ${error && error.stack ? error.stack : error}`),
+);
+process.on("unhandledRejection", (error) =>
+  log(`rejection ${error && error.stack ? error.stack : error}`),
+);
 try {
   require("./dist/main.cjs");
   log("main loaded");

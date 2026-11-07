@@ -1,28 +1,28 @@
-import { app, BrowserWindow, clipboard, ipcMain, shell } from "electron";
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-
 import {
-  IPC,
   type HostId,
   type HostStatus,
   type ImportPlanRequest,
   type ImportResult,
+  IPC,
   type ScanReport,
-  type SessionRef,
   type SessionQuery,
+  type SessionRef,
 } from "@bridge/contracts";
-import { BridgeStore } from "@bridge/store";
+import { createAdapters, createWriters, type HostPaths, resolvePaths } from "@bridge/hosts";
 import {
-  createAdapters,
-  createWriters,
-  isWritableHost,
-  resolvePaths,
-  type HostPaths,
-} from "@bridge/hosts";
-import { detectDivergence, planImport, runImport, undoImport, writerReadiness, type ImportContext } from "@bridge/migrate";
+  detectDivergence,
+  type ImportContext,
+  planImport,
+  runImport,
+  undoImport,
+  writerReadiness,
+} from "@bridge/migrate";
+import { BridgeStore } from "@bridge/store";
+import { app, BrowserWindow, clipboard, ipcMain, shell } from "electron";
 
 declare const __dirname: string;
 
@@ -92,7 +92,15 @@ async function hostStatuses(ctx: ImportContext): Promise<HostStatus[]> {
           displayName: adapter.displayName,
           installed: false,
           detected: false,
-          root: paths[id === "qoder" ? "qoderConfigDir" : id === "codex" ? "codexHome" : id === "zcode" ? "zcodeHome" : "workbuddyHome"],
+          root: paths[
+            id === "qoder"
+              ? "qoderConfigDir"
+              : id === "codex"
+                ? "codexHome"
+                : id === "zcode"
+                  ? "zcodeHome"
+                  : "workbuddyHome"
+          ],
           sessionCount: 0,
           writeReady: false,
           writeBlockedReason: error instanceof Error ? error.message : String(error),
@@ -148,17 +156,16 @@ async function scanAll(ctx: ImportContext, force: boolean): Promise<ScanReport> 
   for (const status of hosts) {
     const write = readiness[status.id];
     status.writeReady = Boolean(write?.ready);
-    status.writeBlockedReason = write?.reason ?? (status.id === "qoder" || status.id === "zcode" ? undefined : "Read-only in this version");
+    status.writeBlockedReason =
+      write?.reason ??
+      (status.id === "qoder" || status.id === "zcode" ? undefined : "Read-only in this version");
     ctx.store.upsertHost(status);
   }
   scanAt = Date.now();
   return { hosts, scannedAt: scanAt, warnings };
 }
 
-async function safeStatus(
-  fn: () => Promise<HostStatus>,
-  id: HostId,
-): Promise<HostStatus> {
+async function safeStatus(fn: () => Promise<HostStatus>, id: HostId): Promise<HostStatus> {
   try {
     return await fn();
   } catch {
@@ -187,7 +194,9 @@ function assertSessionRef(ref: unknown): SessionRef {
 }
 
 function registerIpc(): void {
-  ipcMain.handle(IPC.scan, async (_event, force?: boolean) => scanAll(bridgeContext(), Boolean(force)));
+  ipcMain.handle(IPC.scan, async (_event, force?: boolean) =>
+    scanAll(bridgeContext(), Boolean(force)),
+  );
 
   ipcMain.handle(IPC.hosts, async () => hostStatuses(bridgeContext()));
 
@@ -308,7 +317,7 @@ async function createWindow(): Promise<void> {
     log(`loading dev url ${devUrl}`);
     await window.loadURL(devUrl);
   } else {
-    const target = join(__dirname, "..", "..", "bridge-web", "dist", "index.html");
+    const target = join(__dirname, "web", "index.html");
     log(`loading ${target}`);
     await window.loadFile(target);
   }
@@ -329,7 +338,9 @@ async function createWindow(): Promise<void> {
               ? `[...document.querySelectorAll(".session-card")].find((c) => c.querySelector('.host-chip')?.getAttribute('data-host') === ${JSON.stringify(action.slice(5))})?.click(); "host"`
               : "";
       if (script) {
-        await window.webContents.executeJavaScript(script).catch((error) => log(`action failed: ${error}`));
+        await window.webContents
+          .executeJavaScript(script)
+          .catch((error) => log(`action failed: ${error}`));
         await new Promise((resolve) => setTimeout(resolve, 3500));
       }
     }

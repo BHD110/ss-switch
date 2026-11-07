@@ -1,0 +1,131 @@
+# ss switch
+
+本地会话中转站：在一个桌面界面里浏览 Qoder、ZCode、Codex、WorkBuddy 的本地会话，并把 Qoder 与 ZCode 之间的会话以“复制分支”的方式互相带到另一端继续。
+
+- 只在本机读写，不联网、不上传、不做遥测。
+- 切换 = 复制，不是移动。源会话保持不变；目标端新增一个可继续的会话。
+- 支持“新建副本”和“覆盖已有会话”两种导回方式；覆盖只在目标自上次导入后没有新内容时可用。
+- Codex 与 WorkBuddy 只读；Claude Code / Cursor 不在本版本范围内。
+
+## 能力范围
+
+| Agent     | 浏览 | 写入 | 说明                                                                        |
+| --------- | ---- | ---- | --------------------------------------------------------------------------- |
+| Qoder CN  | 是   | 是   | JSONL + `main.sqlite`（`chat_sessions` / `chat_session_messages` / 搜索段） |
+| ZCode     | 是   | 是   | 主库 `db.sqlite` + 桌面索引 `tasks-index.sqlite`                            |
+| Codex     | 是   | 否   | 读取 `sessions/**/rollout-*.jsonl` 与 `session_index.jsonl`                 |
+| WorkBuddy | 是   | 否   | 读取 `workbuddy.db#sessions` 与 `projects/**/*.jsonl`                       |
+
+互导只支持 Qoder ↔ ZCode。工具调用、思考过程、图片/附件引用会尽量转换；目标端没有对应格式的内容会明确列为“丢弃”，不会静默吞掉。
+
+## 安全边界
+
+- 写入前检查目标应用是否在运行；运行中直接拒绝写入（`BEGIN IMMEDIATE` / WAL 活跃作为补充判断）。
+- 写入前自动备份：Qoder 备份 `main.sqlite`（含 `-wal`/`-shm`）和目标 JSONL；ZCode 备份 `db.sqlite` 与 `tasks-index.sqlite`（含 `-wal`/`-shm`）。
+- 写入在一个事务内完成，写后做行数/序列/搜索段/索引行校验；失败自动回滚。
+- 覆盖已有会话前校验内容指纹；目标在导入后有了新消息就只允许“新建副本”。
+- 撤销只删除 ss switch 创建的目标；覆盖模式用导入前备份还原。绝不删除源会话。
+- 日志只记录 id、计数、耗时和路径，不记录会话正文。
+
+## 快速开始
+
+要求：Windows、Node ≥ 24、pnpm 10。
+
+```bash
+pnpm install
+pnpm build
+pnpm start          # 以开发方式启动（读取真实本地数据）
+```
+
+打包好的程序在 `release/win-unpacked/ss switch.exe`。重新打包：
+
+```bash
+pnpm package:win
+```
+
+首次启动会扫描四个 Agent 的本地数据，缓存在 `%APPDATA%\ss switch\bridge.db`。之后点“刷新”重新扫描。
+
+## 使用方式
+
+1. 左侧选择 Agent（或“全部会话”），中间按工作目录分组的会话列表，右侧预览统一时间线。
+2. 选中 Qoder 或 ZCode 会话，点“复制到…”：
+   - 目标 Agent 自动选另一端；
+   - 默认“新建副本”；
+   - 需要导回并替换原会话时选“覆盖已有会话”，从列表中选择 Bridge 导入过的会话。
+3. 确认前会显示轮次、内容条数、工具调用数、保真度、丢弃项、备份说明和阻断原因。
+4. 写入成功后可以“复制打开命令”，到目标 CLI 里 `--resume`；也可以在重启目标桌面应用后从列表打开。
+5. “历史”里查看每次导入、备份目录、撤销和分叉提示。
+
+写入 Qoder 需要先完全退出 Qoder 桌面；写入 ZCode 需要先完全退出 ZCode。原因见“安全边界”。
+
+## 数据位置
+
+| 内容              | 路径                                                                                           |
+| ----------------- | ---------------------------------------------------------------------------------------------- |
+| Bridge 索引与缓存 | `%APPDATA%\ss switch\bridge.db`                                                                |
+| 导入备份          | `%APPDATA%\ss switch\backups\<tx>\`                                                            |
+| Qoder 会话        | `~/.qoder-cn/projects/<slug>/<session>.jsonl` + `%APPDATA%\com.qodercn.app.stable\main.sqlite` |
+| ZCode 会话        | `~/.zcode/cli/db/db.sqlite` + `~/.zcode/v2/tasks-index.sqlite`                                 |
+| Codex 会话        | `~/.codex/sessions/**/rollout-*.jsonl`                                                         |
+| WorkBuddy 会话    | `~/.workbuddy/workbuddy.db` + `~/.workbuddy/projects/**/*.jsonl`                               |
+
+## 已验证
+
+可重复执行：
+
+```bash
+pnpm test          # 解析器 / 存储 / 导入计划（17 项）
+pnpm test:e2e      # 复制 → 导回覆盖 → 撤销（14 项，全部在临时数据库副本上）
+pnpm m0            # 写入器往返 + Qoder CLI 可见性（临时副本）
+pnpm doctor        # 只读检查四个 Agent 的根目录、版本、会话数、写入条件
+```
+
+已确认：
+
+- Qoder 写入后，`qoderclicn --config-dir <tmp> --list-sessions` 能在对应工作目录列出新会话。
+- Qoder 与 ZCode 的写入、覆盖、删除都在独立副本上通过；写入后读回轮次、工具调用、搜索结果一致。
+- 真实 Qoder 会话导入 ZCode 副本后，源 JSONL 哈希保持不变。
+- 覆盖后的撤销能还原备份；复制后的撤销只移除新目标。
+
+**桌面列表仍需一次人工确认**：本次验证期间 Qoder 正在运行（写入被安全拒绝），ZCode 未启动。额外探测确认：Qoder 桌面**不会**实时导入新出现的 JSONL（写入后 20 秒内 `chat_sessions` 没有新行），所以写入 `main.sqlite` 是必需的，并且必须重启 Qoder 才能在列表里看到新会话。写真实库前请先完全退出两个应用，然后运行：
+
+```bash
+pnpm probe prepare   # 写入两条一次性测试会话（先备份）
+# 打开 Qoder 与 ZCode，确认出现“ss switch 可见性测试”
+# 完全退出两个应用
+pnpm probe cleanup   # 删除测试会话，源数据不变
+```
+
+`pnpm probe status` 可查看目标索引里是否已出现这两条会话。
+
+## 已知限制
+
+- Qoder 的桌面列表与 CLI 列表是两套存储；ss switch 同时写 JSONL 与桌面库。桌面不会实时导入 JSONL（已实测），需要写入 DB 并重启 Qoder。
+- 写入 Qoder 时会复用同一目录下真实会话的 `workspace_id` / `execution_target_json` 和最近可用的模型 key；找不到 workspace 时退回 NULL（现有数据允许）。源模型记录在 `extra_json.bridgeSourceModel`。
+- ZCode 的 `tasks-index.sqlite` 是桌面索引；后台是否会在某些情况下从主库重建索引，尚未在真实桌面验证。
+- 搜索：Qoder 会写 `chat_session_search_segments` 以保持可搜索；Codex/WorkBuddy 只读；ZCode 会写 `searchable_text`，但更复杂的索引不复制。
+- 附件/图片只保留引用或文本说明，不搬运二进制，保真度会标为“适配”。
+- 覆盖是同 ID 替换，风险最高；任一条保护不满足就只允许“新建副本”。
+- 超大会话只做截断与折叠显示；不会为了显示而修改源数据。
+
+## 目录结构
+
+```
+apps/bridge-desktop   Electron 主进程、preload、bootstrap、electron-builder 配置
+apps/bridge-web       React 19 + Vite 界面
+packages/contracts    共享类型与 IPC 通道
+packages/bridge-store Bridge 自有 SQLite（索引/缓存/lineage/tx/divergence）
+packages/hosts        Qoder/Codex/ZCode/WorkBuddy 读取器 + Qoder/ZCode 写入器
+packages/migrate      备份、导入计划、事务、撤销、分叉检测
+packages/verify       写入后断言
+scripts               m0 / e2e / doctor / probe / 打包辅助
+```
+
+## 开发命令
+
+```bash
+pnpm typecheck     # 所有包
+pnpm lint          # Biome
+pnpm build         # 主进程 + 渲染层
+pnpm package:win   # Windows 目录版（release/win-unpacked）
+```

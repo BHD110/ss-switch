@@ -1,8 +1,7 @@
+import type { HostId, SessionDetail, StoredPart, StoredTurn } from "@bridge/contracts";
 import { useMemo, useState } from "react";
 
-import type { HostId, SessionDetail, StoredPart, StoredTurn } from "@bridge/contracts";
-
-import { HOST_LABEL, formatTime, num, shortPath } from "../format";
+import { formatTime, HOST_LABEL, num, shortPath } from "../format";
 
 interface Props {
   detail?: SessionDetail;
@@ -58,7 +57,10 @@ export function SessionPreview({
       <section className="preview-pane">
         <div className="preview-empty">
           <div className="empty-title">选择一个会话</div>
-          <p>左侧列出四个 Agent 的本地会话。选中后可查看对话，并把 Qoder 或 ZCode 的会话复制到另一端继续。</p>
+          <p>
+            左侧列出四个 Agent 的本地会话。选中后可查看对话，并把 Qoder 或 ZCode
+            的会话复制到另一端继续。
+          </p>
         </div>
       </section>
     );
@@ -87,10 +89,10 @@ export function SessionPreview({
           {!session.desktopVisible && <span className="badge cli">仅 CLI 可见</span>}
         </div>
         <div className="preview-actions">
-          <button className="primary" onClick={onSwitch} disabled={!canSwitch}>
+          <button type="button" className="primary" onClick={onSwitch} disabled={!canSwitch}>
             复制到…
           </button>
-          <button className="ghost" onClick={() => onOpenFolder(session.cwd)}>
+          <button type="button" className="ghost" onClick={() => onOpenFolder(session.cwd)}>
             打开工作目录
           </button>
           <span className="mono session-id" title={session.nativeId}>
@@ -116,7 +118,11 @@ export function SessionPreview({
           <TurnView key={turn.id} turn={turn} parts={byTurn.get(turn.id) ?? []} />
         ))}
         {turns.length > visible && (
-          <button className="load-more" onClick={() => setVisible((value) => value + 60)}>
+          <button
+            type="button"
+            className="load-more"
+            onClick={() => setVisible((value) => value + 60)}
+          >
             继续加载 · 还有 {turns.length - visible} 轮
           </button>
         )}
@@ -208,7 +214,9 @@ function PartView({ part }: { part: StoredPart }) {
       return (
         <div className="part chip-row">
           <span className="badge">{part.kind}</span>
-          <span className="mono truncate">{part.text ?? String(payload.path ?? payload.filename ?? "")}</span>
+          <span className="mono truncate">
+            {part.text ?? String(payload.path ?? payload.filename ?? "")}
+          </span>
         </div>
       );
     default:

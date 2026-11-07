@@ -1,5 +1,5 @@
-import { build } from "esbuild";
 import { resolve } from "node:path";
+import { build } from "esbuild";
 
 const entry = process.argv[2];
 const outfile = process.argv[3];

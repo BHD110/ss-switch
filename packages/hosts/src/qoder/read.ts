@@ -1,8 +1,6 @@
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { DatabaseSync, type Database } from "../sqlite";
-
 import type {
   HostStatus,
   PartKind,
@@ -11,13 +9,12 @@ import type {
   StoredSession,
   StoredTurn,
 } from "@bridge/contracts";
-
 import { qoderProjectsDir } from "../paths";
+import { type Database, DatabaseSync } from "../sqlite";
 import type { HostAdapter, HostPaths } from "../types";
 import { emptyCapabilities } from "../types";
 import {
   asArray,
-  cleanUserText,
   asRecord,
   fileMeta,
   firstString,
@@ -31,7 +28,6 @@ import {
   str,
   titleFromText,
   toMs,
-  truncate,
 } from "../util";
 
 interface DesktopRow {
@@ -84,7 +80,10 @@ export class QoderReader implements HostAdapter {
   }
 
   private async readCliVersion(): Promise<string | undefined> {
-    const candidates = [join(this.paths.qoderConfigDir, "version"), join(this.paths.qoderConfigDir, "argv.json")];
+    const candidates = [
+      join(this.paths.qoderConfigDir, "version"),
+      join(this.paths.qoderConfigDir, "argv.json"),
+    ];
     for (const candidate of candidates) {
       try {
         const text = await import("node:fs/promises").then((fs) => fs.readFile(candidate, "utf8"));
@@ -174,7 +173,7 @@ export class QoderReader implements HostAdapter {
 
   private async readHeader(
     path: string,
-    nativeId: string,
+    _nativeId: string,
   ): Promise<{
     cwd?: string;
     model?: string;
@@ -198,7 +197,7 @@ export class QoderReader implements HostAdapter {
       } else if (type === "runtime-config") {
         model ??= str(record.model);
       } else if (type === "custom-title") {
-        title = firstString(record.title, (asRecord(record.customTitle) ?? {}).title);
+        title = firstString(record.title, asRecord(record.customTitle)?.title);
       } else if (type === "user" && !firstUserText) {
         const message = asRecord(record.message);
         for (const block of asArray(message?.content)) {
@@ -278,7 +277,10 @@ export class QoderReader implements HostAdapter {
       const type = record.type;
 
       if (type === "system") {
-        const text = firstString(record.content, asRecord(record.compactMetadata) ? "Conversation compacted" : undefined);
+        const text = firstString(
+          record.content,
+          asRecord(record.compactMetadata) ? "Conversation compacted" : undefined,
+        );
         pushPart("system", "system", text, record);
         continue;
       }
@@ -370,10 +372,9 @@ export class QoderReader implements HostAdapter {
 
     // Pair tool calls with their results so the UI shows one card per call.
     const results = new Map(
-      parts.filter((part) => part.toolCallId && part.kind === "tool_result").map((part) => [
-        part.toolCallId!,
-        part,
-      ]),
+      parts
+        .filter((part) => part.toolCallId && part.kind === "tool_result")
+        .map((part) => [part.toolCallId!, part]),
     );
     for (const part of parts) {
       if (part.kind !== "tool_call" || !part.toolCallId) continue;
@@ -394,7 +395,7 @@ export class QoderReader implements HostAdapter {
           : last?.kind === "tool_call"
             ? "tool-calls"
             : "completed";
-      turn.endedAt ??= last ? turn.endedAt ?? turn.startedAt : turn.startedAt;
+      turn.endedAt ??= last ? (turn.endedAt ?? turn.startedAt) : turn.startedAt;
     }
 
     if (sidechains) warnings.add(`${sidechains} sidechain records merged into the timeline`);
@@ -452,7 +453,9 @@ function toolResultText(content: unknown): string | undefined {
 
 function truncateIfHuge(text: string): string {
   const MAX = 400_000;
-  return text.length > MAX ? `${text.slice(0, MAX)}\n…[truncated ${text.length - MAX} chars]` : text;
+  return text.length > MAX
+    ? `${text.slice(0, MAX)}\n…[truncated ${text.length - MAX} chars]`
+    : text;
 }
 
 export function qoderReadNumber(value: unknown): number | undefined {

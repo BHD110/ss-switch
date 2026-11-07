@@ -3,20 +3,20 @@ import type { HostId } from "@bridge/contracts";
 import { CodexReader } from "./codex/read";
 import { QoderReader } from "./qoder/read";
 import { QoderWriter } from "./qoder/write";
+import type { HostAdapter, HostPaths, HostWriter } from "./types";
 import { WorkbuddyReader } from "./workbuddy/read";
 import { ZcodeReader } from "./zcode/read";
 import { ZcodeWriter } from "./zcode/write";
-import type { HostAdapter, HostPaths, HostWriter } from "./types";
 
-export * from "./types";
+export { CodexReader } from "./codex/read";
 export * from "./paths";
-export * from "./util";
 export { QoderReader } from "./qoder/read";
 export { QoderWriter } from "./qoder/write";
-export { CodexReader } from "./codex/read";
+export * from "./types";
+export * from "./util";
+export { WorkbuddyReader } from "./workbuddy/read";
 export { ZcodeReader } from "./zcode/read";
 export { ZcodeWriter } from "./zcode/write";
-export { WorkbuddyReader } from "./workbuddy/read";
 
 export function createAdapters(paths: HostPaths): Record<HostId, HostAdapter> {
   return {

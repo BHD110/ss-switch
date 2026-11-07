@@ -1,5 +1,3 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-
 import type {
   DivergenceInfo,
   HostId,
@@ -9,6 +7,7 @@ import type {
   StoredSession,
   TxSummary,
 } from "@bridge/contracts";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { bridge, hasBridge } from "./api";
 import { HistoryPanel } from "./components/HistoryPanel";
@@ -135,8 +134,12 @@ export function App() {
 
   const refreshMeta = useCallback(async () => {
     const [tx, div] = await Promise.all([
-      bridge().history().catch(() => []),
-      bridge().divergence().catch(() => []),
+      bridge()
+        .history()
+        .catch(() => []),
+      bridge()
+        .divergence()
+        .catch(() => []),
     ]);
     setHistory(tx);
     setDivergence(div);
@@ -185,10 +188,11 @@ export function App() {
                 {divergence.length} 条分叉
               </span>
             )}
-            <button className="ghost" onClick={() => setHistoryOpen(true)}>
+            <button type="button" className="ghost" onClick={() => setHistoryOpen(true)}>
               历史
             </button>
             <button
+              type="button"
               className="ghost"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             >

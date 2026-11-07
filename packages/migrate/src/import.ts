@@ -6,6 +6,7 @@ import type {
   DivergenceInfo,
   Fidelity,
   HostId,
+  HostStatus,
   ImportPlan,
   ImportPlanRequest,
   ImportResult,
@@ -13,11 +14,10 @@ import type {
   SessionRef,
   StoredPart,
   UndoResult,
-  HostStatus,
 } from "@bridge/contracts";
-import type { BridgeStore } from "@bridge/store";
 import type { HostAdapter, HostPaths, HostWriter } from "@bridge/hosts";
 import { qoderProjectSlug } from "@bridge/hosts";
+import type { BridgeStore } from "@bridge/store";
 import { verifyHost } from "@bridge/verify";
 
 import { backupTargets, createBackup, restoreBackup } from "./backup";
@@ -47,7 +47,8 @@ export async function planImport(
   ).length;
 
   if (!writer) blockers.push(`${targetHost} is read-only in this version`);
-  if (request.source.host === targetHost) blockers.push("Source and target must be different hosts");
+  if (request.source.host === targetHost)
+    blockers.push("Source and target must be different hosts");
 
   let overwriteAllowed = request.mode === "new_copy";
   let overwriteReason: string | undefined;
@@ -66,7 +67,9 @@ export async function planImport(
       } else {
         const expected =
           touching.side === "dst" ? touching.lineage.dstFpAtImport : touching.lineage.srcFpAtImport;
-        const current = await writer.fingerprint(request.targetNativeId);
+        // Lineage fingerprints are content hashes from the host adapter, so
+        // both sides can be compared the same way after any write.
+        const current = await ctx.adapters[targetHost].deepFingerprint(request.targetNativeId);
         if (!current) {
           overwriteAllowed = false;
           overwriteReason = "Target session no longer exists";
@@ -74,6 +77,8 @@ export async function planImport(
           overwriteAllowed = false;
           overwriteReason =
             "Target has changed since the import (new messages). Use “new copy” or archive it first";
+        } else {
+          overwriteAllowed = true;
         }
       }
     }
@@ -132,7 +137,7 @@ export async function runImport(
     };
   }
   const writer = ctx.writers[request.targetHost]!;
-  const adapter = ctx.adapters[request.targetHost];
+  const _adapter = ctx.adapters[request.targetHost];
   const sourceAdapter = ctx.adapters[request.source.host];
   const detail = await readSource(sourceAdapter, request.source);
   const sourceFingerprint = (await sourceAdapter.deepFingerprint(request.source.nativeId)) ?? "";
@@ -168,7 +173,9 @@ export async function runImport(
     backupDir: backup.dir,
   });
 
-  let lineageId = ctx.store.lineageTouching(request.targetHost, targetNativeId)?.lineage.id;
+  const touching = ctx.store.lineageTouching(request.targetHost, targetNativeId);
+  let lineageId = touching?.lineage.id;
+  const lineageSide = touching?.side;
   if (!lineageId) {
     lineageId = ctx.store.addLineage({
       srcSessionId: request.source.nativeId,
@@ -214,8 +221,15 @@ export async function runImport(
       );
     }
 
-    const dstFingerprint = (await writer.fingerprint(targetNativeId)) ?? "";
-    if (lineageId) ctx.store.updateLineageDstFingerprint(lineageId, dstFingerprint);
+    const writtenFingerprint =
+      (await ctx.adapters[request.targetHost].deepFingerprint(targetNativeId)) ?? "";
+    if (lineageId) {
+      // A write on the original side updates the source fingerprint; a write on
+      // the imported side updates the destination fingerprint.
+      if (lineageSide === "src")
+        ctx.store.updateLineageSrcFingerprint(lineageId, writtenFingerprint);
+      else ctx.store.updateLineageDstFingerprint(lineageId, writtenFingerprint);
+    }
     ctx.store.updateTx(txId, "committed", { steps: outcome.steps });
     await refreshIndex(ctx, request.targetHost);
 
@@ -338,7 +352,13 @@ async function readSource(adapter: HostAdapter, ref: SessionRef): Promise<Sessio
 
 function splitRef(value: string, fallbackHost: HostId): [HostId, string] {
   const [maybeHost, ...rest] = value.split(":");
-  if (rest.length && (maybeHost === "qoder" || maybeHost === "codex" || maybeHost === "zcode" || maybeHost === "workbuddy")) {
+  if (
+    rest.length &&
+    (maybeHost === "qoder" ||
+      maybeHost === "codex" ||
+      maybeHost === "zcode" ||
+      maybeHost === "workbuddy")
+  ) {
     return [maybeHost, rest.join(":")];
   }
   return [fallbackHost, value];
@@ -374,7 +394,8 @@ function droppedParts(
   return [...counts.entries()].map(([kind, count]) => ({
     kind,
     count,
-    reason: targetHost === "qoder" ? "Qoder has no equivalent part" : "ZCode has no equivalent part",
+    reason:
+      targetHost === "qoder" ? "Qoder has no equivalent part" : "ZCode has no equivalent part",
   }));
 }
 

@@ -1,6 +1,5 @@
+import { type BridgeApi, IPC } from "@bridge/contracts";
 import { contextBridge, ipcRenderer } from "electron";
-
-import { IPC, type BridgeApi } from "@bridge/contracts";
 
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> =>
   ipcRenderer.invoke(channel, ...args) as Promise<T>;

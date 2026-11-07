@@ -8,7 +8,8 @@
     "build": "tsup",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "electron .",
-    "dev": "tsup --watch"
+    "dev": "tsup --watch",
+    "package": "cd ../.. && pnpm build && cd apps/bridge-desktop && pnpm exec electron-builder --win --dir"
   },
   "dependencies": {
     "@bridge/contracts": "workspace:*",
@@ -17,5 +18,6 @@
     "@bridge/store": "workspace:*",
     "@bridge/verify": "workspace:*"
   },
-  "devDependencies": {}
+  "devDependencies": {},
+  "description": "ss switch \u2014 local session browser and cross-agent copy for Qoder and ZCode"
 }

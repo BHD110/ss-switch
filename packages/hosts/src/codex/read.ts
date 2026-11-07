@@ -1,8 +1,6 @@
-import { existsSync, type Dirent } from "node:fs";
+import { type Dirent, existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { DatabaseSync, type Database } from "../sqlite";
-
 import type {
   HostStatus,
   SessionDetail,
@@ -10,14 +8,14 @@ import type {
   StoredSession,
   StoredTurn,
 } from "@bridge/contracts";
-
 import { codexDbPath, codexSessionsDir } from "../paths";
+import { type Database, DatabaseSync } from "../sqlite";
 import type { HostAdapter, HostPaths } from "../types";
 import { emptyCapabilities } from "../types";
 import {
   asArray,
-  cleanUserText,
   asRecord,
+  cleanUserText,
   fileMeta,
   firstString,
   readJsonl,
@@ -129,13 +127,23 @@ export class CodexReader implements HostAdapter {
     const index = await this.index();
     const files = await this.files();
     const sessions: StoredSession[] = [];
+    // The same thread can have several rollout files (migrations/copies);
+    // keep the newest one so the list and the store agree on a single row.
+    const latest = new Map<string, (typeof sessions)[number]>();
     for (const path of files) {
       const meta = await fileMeta(path);
       const header = await this.header(path);
       if (!header) continue;
-      const nativeId = header.id ?? path.split(/[\\/]/).pop()!.replace(/\.jsonl$/, "");
+      const nativeId =
+        header.id ??
+        path
+          .split(String.fromCharCode(92))
+          .join("/")
+          .split("/")
+          .pop()!
+          .replace(/\.jsonl$/, "");
       const entry = index.get(nativeId);
-      sessions.push({
+      const candidate: StoredSession = {
         id: stableId("codex", nativeId),
         host: "codex",
         nativeId,
@@ -148,16 +156,27 @@ export class CodexReader implements HostAdapter {
         fingerprint: `m:${meta.mtimeMs}:${meta.size}`,
         desktopVisible: this.threadVisible(nativeId),
         counts: { turns: 0, parts: 0 },
-      });
+      };
+      const previous = latest.get(nativeId);
+      if (!previous || previous.updatedAt < candidate.updatedAt) latest.set(nativeId, candidate);
     }
+    sessions.push(...latest.values());
     return sessions.sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
   private async header(
     path: string,
-  ): Promise<{ id?: string; cwd?: string; model?: string; createdAt?: number; firstUserText?: string } | undefined> {
-    let result: { id?: string; cwd?: string; model?: string; createdAt?: number; firstUserText?: string } =
-      {};
+  ): Promise<
+    | { id?: string; cwd?: string; model?: string; createdAt?: number; firstUserText?: string }
+    | undefined
+  > {
+    let result: {
+      id?: string;
+      cwd?: string;
+      model?: string;
+      createdAt?: number;
+      firstUserText?: string;
+    } = {};
     let seen = 0;
     for await (const record of readJsonl(path)) {
       seen += 1;
@@ -278,7 +297,8 @@ export class CodexReader implements HostAdapter {
           continue;
         }
         if (type === "custom_tool_call_output" || type === "function_call_output") {
-          const text = typeof payload.output === "string" ? payload.output : blocksText(payload.output);
+          const text =
+            typeof payload.output === "string" ? payload.output : blocksText(payload.output);
           push("tool_result", "tool", text, payload, {
             toolCallId: str(payload.call_id),
             toolState: "ok",
@@ -334,10 +354,9 @@ export class CodexReader implements HostAdapter {
     }
 
     const results = new Map(
-      parts.filter((part) => part.kind === "tool_result" && part.toolCallId).map((part) => [
-        part.toolCallId!,
-        part,
-      ]),
+      parts
+        .filter((part) => part.kind === "tool_result" && part.toolCallId)
+        .map((part) => [part.toolCallId!, part]),
     );
     for (const part of parts) {
       if (part.kind !== "tool_call" || !part.toolCallId) continue;

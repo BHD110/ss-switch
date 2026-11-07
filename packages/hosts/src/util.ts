@@ -149,7 +149,10 @@ export function stableId(host: string, nativeId: string): string {
 
 export function clampText(text: string, max = 200_000): { text: string; truncated: boolean } {
   if (text.length <= max) return { text, truncated: false };
-  return { text: `${text.slice(0, max)}\n…[truncated ${text.length - max} chars]`, truncated: true };
+  return {
+    text: `${text.slice(0, max)}\n…[truncated ${text.length - max} chars]`,
+    truncated: true,
+  };
 }
 const ENVELOPE_BLOCKS = [
   /<system-reminder[\s\S]*?<\/system-reminder>/gi,

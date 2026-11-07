@@ -1,8 +1,6 @@
-import { existsSync, type Dirent } from "node:fs";
+import { type Dirent, existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { DatabaseSync, type Database } from "../sqlite";
-
 import type {
   HostStatus,
   SessionDetail,
@@ -10,16 +8,15 @@ import type {
   StoredSession,
   StoredTurn,
 } from "@bridge/contracts";
-
 import { workbuddyDbPath, workbuddyProjectsDir } from "../paths";
+import { type Database, DatabaseSync } from "../sqlite";
 import type { HostAdapter, HostPaths } from "../types";
 import { emptyCapabilities } from "../types";
 import {
   asArray,
-  cleanUserText,
   asRecord,
+  cleanUserText,
   fileMeta,
-  firstString,
   readJsonl,
   sha256,
   sha256File,
@@ -134,7 +131,8 @@ export class WorkbuddyReader implements HostAdapter {
         host: "workbuddy",
         nativeId: id,
         cwd: row?.cwd ?? header.cwd ?? "",
-        title: row?.custom_title ?? row?.title ?? header.title ?? titleFromText(header.firstUserText),
+        title:
+          row?.custom_title ?? row?.title ?? header.title ?? titleFromText(header.firstUserText),
         model: row?.model ?? undefined,
         createdAt: row?.created_at ?? meta.mtimeMs,
         updatedAt: row?.last_activity_at ?? row?.updated_at ?? meta.mtimeMs,
@@ -267,10 +265,9 @@ export class WorkbuddyReader implements HostAdapter {
     }
 
     const results = new Map(
-      parts.filter((part) => part.kind === "tool_result" && part.toolCallId).map((part) => [
-        part.toolCallId!,
-        part,
-      ]),
+      parts
+        .filter((part) => part.kind === "tool_result" && part.toolCallId)
+        .map((part) => [part.toolCallId!, part]),
     );
     for (const part of parts) {
       if (part.kind !== "tool_call" || !part.toolCallId) continue;
@@ -293,7 +290,7 @@ export class WorkbuddyReader implements HostAdapter {
 
   async deepFingerprint(nativeId: string): Promise<string | undefined> {
     const session = (await this.scan()).find((item) => item.nativeId === nativeId);
-    if (!session || !session.rawRef.endsWith(".jsonl")) return undefined;
+    if (!session?.rawRef.endsWith(".jsonl")) return undefined;
     return sha256File(session.rawRef);
   }
 

@@ -1,6 +1,6 @@
 import type { DivergenceInfo, TxSummary } from "@bridge/contracts";
 
-import { HOST_LABEL, formatTime, stateLabel } from "../format";
+import { formatTime, HOST_LABEL, stateLabel } from "../format";
 
 interface Props {
   open: boolean;
@@ -12,7 +12,15 @@ interface Props {
   onOpenFolder(path: string): void;
 }
 
-export function HistoryPanel({ open, history, divergence, busyTx, onClose, onUndo, onOpenFolder }: Props) {
+export function HistoryPanel({
+  open,
+  history,
+  divergence,
+  busyTx,
+  onClose,
+  onUndo,
+  onOpenFolder,
+}: Props) {
   if (!open) return null;
   return (
     <div className="sheet-backdrop" onClick={onClose}>
@@ -23,7 +31,7 @@ export function HistoryPanel({ open, history, divergence, busyTx, onClose, onUnd
             <h2>历史与回滚</h2>
             <div className="sheet-sub">每次写入都有独立备份；撤销只移除 Bridge 创建的目标。</div>
           </div>
-          <button className="icon-button" onClick={onClose}>
+          <button type="button" className="icon-button" onClick={onClose}>
             关闭
           </button>
         </header>
@@ -60,12 +68,17 @@ export function HistoryPanel({ open, history, divergence, busyTx, onClose, onUnd
                 <span className="mono truncate">{tx.dst ?? "—"}</span>
                 <span className="hint">{formatTime(tx.startedAt)}</span>
                 {tx.backupDir && (
-                  <button className="ghost-link" onClick={() => onOpenFolder(tx.backupDir!)}>
+                  <button
+                    type="button"
+                    className="ghost-link"
+                    onClick={() => onOpenFolder(tx.backupDir!)}
+                  >
                     备份
                   </button>
                 )}
                 {tx.state === "committed" && (
                   <button
+                    type="button"
                     className="ghost-link danger"
                     onClick={() => onUndo(tx.id)}
                     disabled={busyTx === tx.id}
@@ -73,7 +86,11 @@ export function HistoryPanel({ open, history, divergence, busyTx, onClose, onUnd
                     {busyTx === tx.id ? "撤销中…" : "撤销"}
                   </button>
                 )}
-                {tx.error && <span className="tx-error" title={tx.error}>{tx.error}</span>}
+                {tx.error && (
+                  <span className="tx-error" title={tx.error}>
+                    {tx.error}
+                  </span>
+                )}
               </div>
             ))}
           </div>

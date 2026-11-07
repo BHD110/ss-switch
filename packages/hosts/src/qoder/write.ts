@@ -2,15 +2,13 @@ import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { mkdir, open, rename, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { DatabaseSync, type Database } from "../sqlite";
+import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
-
 import type { SessionDetail, StoredPart, StoredTurn } from "@bridge/contracts";
-
-import { qoderProjectSlug } from "../util";
-import { sha256 } from "../util";
+import { resolvePaths } from "../paths";
+import { type Database, DatabaseSync } from "../sqlite";
 import type { HostPaths, HostWriter, WriteOptions, WriteOutcome } from "../types";
+import { qoderProjectSlug, sha256 } from "../util";
 
 const execFileAsync = promisify(execFile);
 
@@ -59,7 +57,10 @@ export class QoderWriter implements HostWriter {
     const db = new DatabaseSync(this.dbPath(), { readOnly: true });
     try {
       const sessionCols = new Set(
-        db.prepare("PRAGMA table_info(chat_sessions)").all().map((row) => String((row as { name: string }).name)),
+        db
+          .prepare("PRAGMA table_info(chat_sessions)")
+          .all()
+          .map((row) => String((row as { name: string }).name)),
       );
       for (const column of REQUIRED_SESSION_COLUMNS) {
         if (!sessionCols.has(column)) {
@@ -67,7 +68,10 @@ export class QoderWriter implements HostWriter {
         }
       }
       const messageCols = new Set(
-        db.prepare("PRAGMA table_info(chat_session_messages)").all().map((row) => String((row as { name: string }).name)),
+        db
+          .prepare("PRAGMA table_info(chat_session_messages)")
+          .all()
+          .map((row) => String((row as { name: string }).name)),
       );
       for (const column of REQUIRED_MESSAGE_COLUMNS) {
         if (!messageCols.has(column)) {
@@ -90,9 +94,15 @@ export class QoderWriter implements HostWriter {
   }
 
   async isBusy(): Promise<boolean> {
+    // A copy used for validation must not be blocked by the live app process.
+    if (resolve(this.dbPath()) !== resolve(resolvePaths().qoderDesktopDb)) return false;
     if (process.platform === "win32") {
       try {
-        const { stdout } = await execFileAsync("tasklist", ["/FI", "IMAGENAME eq Qoder CN.exe", "/NH"]);
+        const { stdout } = await execFileAsync("tasklist", [
+          "/FI",
+          "IMAGENAME eq Qoder CN.exe",
+          "/NH",
+        ]);
         if (stdout.toLowerCase().includes("qoder cn.exe")) return true;
       } catch {
         // tasklist unavailable; fall through to WAL freshness.
@@ -124,7 +134,9 @@ export class QoderWriter implements HostWriter {
         )
         .get(nativeId) as { c: number; u: number; b: number };
       if (!row && !file) return undefined;
-      return sha256(`q|${row?.updated_at ?? 0}|${messages.c}|${messages.u}|${messages.b}|${file ?? ""}`);
+      return sha256(
+        `q|${row?.updated_at ?? 0}|${messages.c}|${messages.u}|${messages.b}|${file ?? ""}`,
+      );
     } finally {
       db.close();
     }
@@ -145,7 +157,13 @@ export class QoderWriter implements HostWriter {
     const nativeId = options.nativeId ?? randomUUID();
     const cwd = options.cwd || detail.session.cwd || process.cwd();
     const title = options.title || detail.session.title || "Imported session";
-    const plan = this.buildPlan(detail, nativeId, cwd, title, options);
+    // The desktop needs a model key it can actually resolve; a ZCode model id
+    // would be rejected. Reuse the newest local Qoder selection instead.
+    const targetModel = this.defaultModel();
+    const plan = this.buildPlan(detail, nativeId, cwd, title, {
+      ...options,
+      sourceModel: targetModel ?? options.sourceModel,
+    });
 
     const file = join(
       this.paths.qoderConfigDir,
@@ -159,6 +177,9 @@ export class QoderWriter implements HostWriter {
     const db = new DatabaseSync(this.dbPath());
     db.exec("PRAGMA foreign_keys=ON");
     db.exec("PRAGMA busy_timeout=4000");
+    // Reuse the workspace identity a real session already registered for this
+    // directory; a NULL workspace_id is legal but the desktop groups by it.
+    const workspace = this.workspaceFor(db, cwd);
     try {
       db.exec("BEGIN IMMEDIATE");
       db.prepare(
@@ -177,19 +198,21 @@ export class QoderWriter implements HostWriter {
         title,
         cwd,
         "local",
+        workspace.workspaceId,
         null,
-        null,
-        null,
+        targetModel,
         "auto",
         "{}",
         JSON.stringify(plan.extra),
         detail.session.createdAt || Date.now(),
         detail.session.updatedAt || Date.now(),
-        JSON.stringify({
-          mode: "local",
-          host: { id: "local", kind: "local", label: "Local" },
-          workspace: { id: "", path: cwd },
-        }),
+        JSON.stringify(
+          workspace.target ?? {
+            mode: "local",
+            host: { id: "local", kind: "local", label: "Local" },
+            workspace: { id: "", path: cwd },
+          },
+        ),
         null,
         0,
         0,
@@ -352,7 +375,9 @@ export class QoderWriter implements HostWriter {
 
     const turns = [...detail.turns].sort((a, b) => a.ord - b.ord);
     for (const turn of turns) {
-      const turnParts = detail.parts.filter((part) => part.turnId === turn.id).sort((a, b) => a.ord - b.ord);
+      const turnParts = detail.parts
+        .filter((part) => part.turnId === turn.id)
+        .sort((a, b) => a.ord - b.ord);
       const userText = turnParts
         .filter((part) => part.kind === "text" && part.role === "user")
         .map((part) => part.text ?? "")
@@ -437,7 +462,8 @@ export class QoderWriter implements HostWriter {
         if (converted.kind === "text") lastTextId = String(converted.db.id);
       }
       if (!jsonlContent.length) {
-        if (assistantParts.length) warnings.push("A turn had no assistant content after conversion");
+        if (assistantParts.length)
+          warnings.push("A turn had no assistant content after conversion");
         continue;
       }
       if (userText) {
@@ -450,7 +476,9 @@ export class QoderWriter implements HostWriter {
             type: "message",
             role: "assistant",
             model: model ?? null,
-            stop_reason: jsonlContent.some((block) => block.type === "tool_use") ? "tool_use" : "end_turn",
+            stop_reason: jsonlContent.some((block) => block.type === "tool_use")
+              ? "tool_use"
+              : "end_turn",
             stop_sequence: null,
             content: jsonlContent,
           },
@@ -497,13 +525,19 @@ export class QoderWriter implements HostWriter {
           jsonlRecords.push({
             type: "user",
             uuid: resultUuid,
-            timestamp: iso(part.payload && (part.payload as Record<string, unknown>).completedAt
-              ? Date.parse(String((part.payload as Record<string, unknown>).completedAt))
-              : turn.endedAt || turn.startedAt || createdAt),
+            timestamp: iso(
+              part.payload && (part.payload as Record<string, unknown>).completedAt
+                ? Date.parse(String((part.payload as Record<string, unknown>).completedAt))
+                : turn.endedAt || turn.startedAt || createdAt,
+            ),
             message: {
               role: "user",
               content: [
-                { type: "tool_result", tool_use_id: part.toolCallId ?? part.id, content: resultText },
+                {
+                  type: "tool_result",
+                  tool_use_id: part.toolCallId ?? part.id,
+                  content: resultText,
+                },
               ],
             },
             sourceToolAssistantUUID: assistantUuid,
@@ -549,7 +583,9 @@ export class QoderWriter implements HostWriter {
     }
 
     const lastPrompt = [...messages].reverse().find((message) => message.role === "user");
-    const lastPromptText = lastPrompt?.payload.parts?.find((part) => typeof part.text === "string")?.text;
+    const lastPromptText = lastPrompt?.payload.parts?.find(
+      (part) => typeof part.text === "string",
+    )?.text;
     jsonlRecords.push({
       type: "last-prompt",
       sessionId: nativeId,
@@ -566,7 +602,9 @@ export class QoderWriter implements HostWriter {
     }
 
     const extra: Record<string, unknown> = {
-      source: "bridge",
+      // "workspace" is a value the desktop already knows; bridge provenance
+      // travels in the bridge* keys so unknown sources cannot hide the row.
+      source: "workspace",
       cliSessionReady: true,
       modelSource: { kind: "system" },
       titleResolved: true,
@@ -577,11 +615,11 @@ export class QoderWriter implements HostWriter {
       bridgeLineage: options.lineageId ?? null,
       bridgeSourceHost: options.sourceHost ?? detail.session.host,
       bridgeSourceSessionId: options.sourceSessionId ?? detail.session.nativeId,
-      bridgeSourceModel: model ?? null,
+      bridgeSourceModel: detail.session.model ?? null,
     };
 
     return {
-      jsonl: jsonlRecords.map((record) => JSON.stringify(record)).join("\n") + "\n",
+      jsonl: `${jsonlRecords.map((record) => JSON.stringify(record)).join("\n")}\n`,
       extra,
       messages,
       turnCount: turns.length,
@@ -589,6 +627,51 @@ export class QoderWriter implements HostWriter {
       dropped,
       warnings,
     };
+  }
+
+  private defaultModel(): string | null {
+    try {
+      const db = new DatabaseSync(this.dbPath(), { readOnly: true });
+      try {
+        const row = db
+          .prepare(
+            `SELECT model FROM chat_sessions
+             WHERE model IS NOT NULL AND model <> '' AND deleted_at IS NULL
+             ORDER BY updated_at DESC LIMIT 1`,
+          )
+          .get() as { model: string } | undefined;
+        return row?.model ?? null;
+      } finally {
+        db.close();
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  private workspaceFor(
+    db: Database,
+    cwd: string,
+  ): { workspaceId: string | null; target?: Record<string, unknown> } {
+    try {
+      const row = db
+        .prepare(
+          `SELECT workspace_id, execution_target_json FROM chat_sessions
+           WHERE cwd=? AND workspace_id IS NOT NULL AND deleted_at IS NULL
+           ORDER BY updated_at DESC LIMIT 1`,
+        )
+        .get(cwd) as { workspace_id: string; execution_target_json: string } | undefined;
+      if (!row) return { workspaceId: null };
+      let target: Record<string, unknown> | undefined;
+      try {
+        target = JSON.parse(row.execution_target_json) as Record<string, unknown>;
+      } catch {
+        target = undefined;
+      }
+      return { workspaceId: row.workspace_id, target };
+    } catch {
+      return { workspaceId: null };
+    }
   }
 
   private insertMessages(db: Database, nativeId: string, messages: PlannedMessage[]): void {
@@ -669,7 +752,12 @@ function toQoderPart(
       if (!part.text) return undefined;
       return {
         kind: "text",
-        db: { id: `${assistantUuid}:text:${part.ord}`, type: "text", text: part.text, parentToolUseId: null },
+        db: {
+          id: `${assistantUuid}:text:${part.ord}`,
+          type: "text",
+          text: part.text,
+          parentToolUseId: null,
+        },
         jsonl: { type: "text", text: part.text },
       };
     }
@@ -754,7 +842,8 @@ function increment(
 
 function isBridgeOwned(extraJson: string): boolean {
   try {
-    return JSON.parse(extraJson).source === "bridge";
+    const parsed = JSON.parse(extraJson) as { bridgeVersion?: number; bridgeLineage?: string };
+    return Boolean(parsed.bridgeVersion || parsed.bridgeLineage);
   } catch {
     return false;
   }

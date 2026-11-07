@@ -4,6 +4,6 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react()],
   base: "./",
-  build: { outDir: "dist", emptyOutDir: true, target: "chrome130" },
+  build: { outDir: "../../apps/bridge-desktop/dist/web", emptyOutDir: true, target: "chrome130" },
   server: { port: 5173, strictPort: true },
 });

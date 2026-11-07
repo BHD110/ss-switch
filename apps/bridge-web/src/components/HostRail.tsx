@@ -35,12 +35,19 @@ export function HostRail({
             <div className="brand-sub">会话中转站</div>
           </div>
         </div>
-        <button className="icon-button" onClick={onRefresh} disabled={busy} title="重新扫描四个 Agent">
+        <button
+          type="button"
+          className="icon-button"
+          onClick={onRefresh}
+          disabled={busy}
+          title="重新扫描四个 Agent"
+        >
           {busy ? "扫描中" : "刷新"}
         </button>
       </div>
 
       <button
+        type="button"
         className={`host-row all-row ${activeHost === "all" ? "active" : ""}`}
         onClick={() => onSelect("all")}
       >
@@ -53,14 +60,14 @@ export function HostRail({
       <div className="host-list">
         {ordered.map((host) => (
           <div key={host.id} className={`host-row ${activeHost === host.id ? "active" : ""}`}>
-            <button className="host-main" onClick={() => onSelect(host.id)}>
+            <button type="button" className="host-main" onClick={() => onSelect(host.id)}>
               <span className="host-dot" data-host={host.id} />
               <span className="host-name">
                 {HOST_LABEL[host.id]}
                 {!host.detected && <span className="host-missing">未安装</span>}
               </span>
               <span className="host-count">{num(host.sessionCount)}</span>
-              <span className="host-meta">
+              <span className="host-meta" title={host.writeBlockedReason ?? ""}>
                 <span className={host.writeReady ? "write-dot ok" : "write-dot"} />
                 {host.id === "qoder" || host.id === "zcode"
                   ? host.writeReady
@@ -74,6 +81,7 @@ export function HostRail({
               </span>
             </button>
             <button
+              type="button"
               className="ghost-link"
               title="打开该 Agent 的数据目录"
               onClick={() => onOpenFolder(host.root)}
