@@ -37,7 +37,7 @@ pnpm build
 pnpm start          # 以开发方式启动（读取真实本地数据）
 ```
 
-打包好的程序在 `release/win-unpacked/ss switch.exe`。重新打包：
+打包好的程序：目录版 `release/win-unpacked/ss switch.exe`，免安装版 `release/ss-switch-0.1.0-x64.exe`。重新打包：
 
 ```bash
 pnpm package:win
@@ -128,5 +128,6 @@ scripts               m0 / e2e / doctor / probe / 打包辅助
 pnpm typecheck     # 所有包
 pnpm lint          # Biome
 pnpm build         # 主进程 + 渲染层
-pnpm package:win   # Windows 目录版（release/win-unpacked）
+pnpm package:win       # Windows 目录版（release/win-unpacked）
+pnpm package:portable  # 单文件免安装版（release/ss-switch-*.exe）
 ```
