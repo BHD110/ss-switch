@@ -1,0 +1,21 @@
+{
+  "name": "@bridge/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "bootstrap.cjs",
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "electron .",
+    "dev": "tsup --watch"
+  },
+  "dependencies": {
+    "@bridge/contracts": "workspace:*",
+    "@bridge/hosts": "workspace:*",
+    "@bridge/migrate": "workspace:*",
+    "@bridge/store": "workspace:*",
+    "@bridge/verify": "workspace:*"
+  },
+  "devDependencies": {}
+}

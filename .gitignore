@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.tmp/
+.shots/
+*.log
+run.out
+bridge.db
+bridge.db-wal
+bridge.db-shm
+backups/
