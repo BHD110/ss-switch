@@ -29,8 +29,16 @@ declare const __dirname: string;
 function log(message: string): void {
   const line = `[${new Date().toISOString()}] ${message}
 `;
+  let target = process.env.BRIDGE_LOG ?? "bridge.log";
   try {
-    appendFileSync(process.env.BRIDGE_LOG ?? "bridge.log", line);
+    if (!process.env.BRIDGE_LOG && app.isReady()) {
+      target = join(app.getPath("userData"), "bridge.log");
+    }
+  } catch {
+    // Keep the fallback path.
+  }
+  try {
+    appendFileSync(target, line);
   } catch {
     // Logging must never break startup.
   }
