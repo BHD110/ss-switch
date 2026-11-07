@@ -11,6 +11,7 @@ import {
   ZcodeReader,
   ZcodeWriter,
 } from "../packages/hosts/src/index";
+import { DatabaseSync } from "../packages/hosts/src/sqlite";
 import {
   detectDivergence,
   type ImportContext,
@@ -153,6 +154,35 @@ async function main(): Promise<void> {
     afterRestore.turns.length === 2,
     `${afterRestore.turns.length} turns`,
   );
+
+  // A changed destination must be reported as a fork, not silently overwritten.
+  const zdb = new DatabaseSync(join(root, "zcode", ".zcode", "cli", "db", "db.sqlite"));
+  zdb
+    .prepare("UPDATE session SET time_updated = time_updated + 5000 WHERE id=?")
+    .run(copyResult.targetNativeId!);
+  zdb.close();
+  const fork = await detectDivergence(ctx);
+  check(
+    "divergence.detected",
+    fork.some((item) => item.dstChanged && !item.srcChanged),
+    JSON.stringify(fork),
+  );
+
+  // A newer private schema must fail closed, not guess at columns.
+  const schemaDb = new DatabaseSync(join(root, "zcode", ".zcode", "cli", "db", "db.sqlite"));
+  schemaDb
+    .prepare(
+      "INSERT INTO schema_migration(id, checksum, app_version, time_applied) VALUES(?,?,?,?)",
+    )
+    .run("0099_future", "x", "9.9.9", Date.now());
+  schemaDb.close();
+  let rejected = false;
+  try {
+    await writers.zcode.assertSchema();
+  } catch {
+    rejected = true;
+  }
+  check("schema.fail-closed", rejected, "0099 rejected");
 
   const undoCopy = await undoImport(ctx, copyResult.txId);
   check("undo.copy", undoCopy.ok, undoCopy.error ?? "");

@@ -301,6 +301,17 @@ export async function undoImport(ctx: ImportContext, txId: string): Promise<Undo
       const manifest = await readManifest(tx.backupDir);
       if (!manifest) throw new Error("Backup manifest is missing");
       await restoreBackup(manifest);
+      // Undo cancels the import, so the lineage baseline returns to the
+      // restored content instead of reporting a permanent fork.
+      const touching = ctx.store.lineageTouching(host, nativeId);
+      if (touching) {
+        const current = await ctx.adapters[host].deepFingerprint(nativeId);
+        if (current) {
+          if (touching.side === "src")
+            ctx.store.updateLineageSrcFingerprint(touching.lineage.id, current);
+          else ctx.store.updateLineageDstFingerprint(touching.lineage.id, current);
+        }
+      }
     } else {
       writer.remove(nativeId);
     }
