@@ -333,9 +333,9 @@ async function createWindow(): Promise<void> {
     const action = process.env.BRIDGE_CAPTURE_ACTION;
     if (action) {
       const script =
-        action === "run"
+        action === "run" || action.startsWith("run:")
           ? `(async () => {
-               document.querySelectorAll(".session-card")[0]?.click();
+               document.querySelectorAll(".session-card")[${action.includes(":") ? Number(action.slice(4)) : 0}]?.click();
                await new Promise(r => setTimeout(r, 2500));
                document.querySelector(".preview-actions .primary")?.click();
                await new Promise(r => setTimeout(r, 4000));
