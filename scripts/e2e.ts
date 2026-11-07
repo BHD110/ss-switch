@@ -112,6 +112,19 @@ async function main(): Promise<void> {
     "deep hash equal",
   );
 
+  // A write updates the WAL; that must not make the target look "running".
+  check(
+    "busy.after-write",
+    !(await writers.zcode.isBusy()) && !(await writers.qoder.isBusy()),
+    "both writers idle after their own write",
+  );
+  const replan = await planImport(ctx, {
+    source: { host: "qoder", nativeId: qoderId },
+    targetHost: "zcode",
+    mode: "new_copy",
+  });
+  check("replan.no-running-blocker", replan.blockers.length === 0, JSON.stringify(replan.blockers));
+
   const lineage = store.lineageTouching("zcode", copyResult.targetNativeId!);
   check(
     "lineage.copy",

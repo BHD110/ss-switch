@@ -148,6 +148,8 @@ export interface ImportPlanRequest {
   targetNativeId?: string;
   title?: string;
   cwd?: string;
+  /** Experimental: write a new copy while the target app is still running. */
+  allowRunningWrite?: boolean;
 }
 
 export interface ImportPlan {
@@ -165,6 +167,8 @@ export interface ImportPlan {
   writeBlockedReason?: string;
   overwriteAllowed: boolean;
   overwriteReason?: string;
+  /** True when the write happened/will happen against a running target. */
+  requiresRestart: boolean;
   backupNote: string;
 }
 

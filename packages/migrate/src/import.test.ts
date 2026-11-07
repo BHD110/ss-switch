@@ -256,6 +256,33 @@ describe("planImport", () => {
     expect(changed.overwriteReason).toContain("changed");
   });
 
+  it("can opt into writing a new copy into a running target", async () => {
+    const { ctx, writer } = context();
+    writer.busy = true;
+    const plan = await planImport(ctx, {
+      source: { host: "qoder", nativeId: "src" },
+      targetHost: "zcode",
+      mode: "new_copy",
+      allowRunningWrite: true,
+    });
+    expect(plan.blockers).toEqual([]);
+    expect(plan.requiresRestart).toBe(true);
+    expect(plan.warnings.join(" ")).toContain("正在运行");
+  });
+
+  it("never allows a running-target overwrite", async () => {
+    const { ctx, writer } = context();
+    writer.busy = true;
+    const plan = await planImport(ctx, {
+      source: { host: "qoder", nativeId: "src" },
+      targetHost: "zcode",
+      mode: "overwrite",
+      targetNativeId: "b",
+      allowRunningWrite: true,
+    });
+    expect(plan.blockers.join(" ")).toContain("running");
+  });
+
   it("returns a failed result without writing when blocked", async () => {
     const { ctx, writer } = context();
     writer.busy = true;

@@ -251,7 +251,13 @@ export class QoderWriter implements HostWriter {
   async overwrite(detail: SessionDetail, nativeId: string): Promise<WriteOutcome> {
     const cwd = detail.session.cwd || process.cwd();
     const title = detail.session.title || "Imported session";
-    const plan = this.buildPlan(detail, nativeId, cwd, title, { overwrite: true });
+    // Never write a foreign model id into a Qoder session; the desktop would
+    // fall back to its default agent. Keep the session's own key when present.
+    const targetModel = this.existingModel(nativeId) ?? this.defaultModel();
+    const plan = this.buildPlan(detail, nativeId, cwd, title, {
+      overwrite: true,
+      sourceModel: targetModel ?? undefined,
+    });
     const file = join(
       this.paths.qoderConfigDir,
       "projects",
@@ -272,10 +278,11 @@ export class QoderWriter implements HostWriter {
       db.prepare("DELETE FROM chat_session_search_segments WHERE session_id=?").run(nativeId);
       db.prepare("DELETE FROM chat_session_messages WHERE session_id=?").run(nativeId);
       db.prepare(
-        "UPDATE chat_sessions SET title=?, cwd=?, extra_json=?, updated_at=?, message_envelope_version=1 WHERE session_id=?",
+        "UPDATE chat_sessions SET title=?, cwd=?, model=COALESCE(model, ?), extra_json=?, updated_at=?, message_envelope_version=1 WHERE session_id=?",
       ).run(
         title,
         cwd,
+        targetModel,
         JSON.stringify(plan.extra),
         detail.session.updatedAt || Date.now(),
         nativeId,
@@ -627,6 +634,22 @@ export class QoderWriter implements HostWriter {
       dropped,
       warnings,
     };
+  }
+
+  private existingModel(nativeId: string): string | null {
+    try {
+      const db = new DatabaseSync(this.dbPath(), { readOnly: true });
+      try {
+        const row = db
+          .prepare("SELECT model FROM chat_sessions WHERE session_id=?")
+          .get(nativeId) as { model: string | null } | undefined;
+        return row?.model ?? null;
+      } finally {
+        db.close();
+      }
+    } catch {
+      return null;
+    }
   }
 
   private defaultModel(): string | null {

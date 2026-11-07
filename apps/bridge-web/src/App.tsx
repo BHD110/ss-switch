@@ -227,7 +227,12 @@ export function App() {
         sessions={sessions}
         history={history}
         onClose={() => setSheetOpen(false)}
-        onDone={() => {
+        onDone={(result) => {
+          if (result?.ok) {
+            setToast(
+              `已写入 ${HOST_LABEL[result.targetHost]}：${result.targetNativeId ?? ""}。重启目标应用后可在列表看到。`,
+            );
+          }
           void refreshMeta();
           void refresh(true);
         }}

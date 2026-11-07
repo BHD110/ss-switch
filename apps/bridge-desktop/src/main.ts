@@ -38,6 +38,9 @@ function log(message: string): void {
 }
 
 app.setName("ss switch");
+if (process.env.BRIDGE_USER_DATA) {
+  app.setPath("userData", process.env.BRIDGE_USER_DATA);
+}
 
 const paths: HostPaths = resolvePaths(
   process.env.BRIDGE_CONFIG_ROOT
@@ -330,13 +333,31 @@ async function createWindow(): Promise<void> {
     const action = process.env.BRIDGE_CAPTURE_ACTION;
     if (action) {
       const script =
-        action === "sheet"
-          ? `(async () => { document.querySelectorAll(".session-card")[0]?.click(); await new Promise(r => setTimeout(r, 2500)); document.querySelector(".preview-actions .primary")?.click(); return "sheet"; })()`
-          : action.startsWith("select:")
-            ? `document.querySelectorAll(".session-card")[${Number(action.slice(7))}]?.click(); "select"`
-            : action.startsWith("host:")
-              ? `[...document.querySelectorAll(".session-card")].find((c) => c.querySelector('.host-chip')?.getAttribute('data-host') === ${JSON.stringify(action.slice(5))})?.click(); "host"`
-              : "";
+        action === "run"
+          ? `(async () => {
+               document.querySelectorAll(".session-card")[0]?.click();
+               await new Promise(r => setTimeout(r, 2500));
+               document.querySelector(".preview-actions .primary")?.click();
+               await new Promise(r => setTimeout(r, 4000));
+               document.querySelector(".sheet-actions .primary")?.click();
+               return "run";
+             })()`
+          : action === "sheet" || action.startsWith("sheet:")
+            ? `(async () => {
+               const target = ${JSON.stringify(action.includes(":") ? action.slice(6) : "")};
+               const card = target
+                 ? [...document.querySelectorAll(".session-card")].find((c) => c.querySelector(".host-chip")?.getAttribute("data-host") === target)
+                 : document.querySelectorAll(".session-card")[0];
+               card?.click();
+               await new Promise(r => setTimeout(r, 2500));
+               document.querySelector(".preview-actions .primary")?.click();
+               return "sheet";
+             })()`
+            : action.startsWith("select:")
+              ? `document.querySelectorAll(".session-card")[${Number(action.slice(7))}]?.click(); "select"`
+              : action.startsWith("host:")
+                ? `[...document.querySelectorAll(".session-card")].find((c) => c.querySelector('.host-chip')?.getAttribute('data-host') === ${JSON.stringify(action.slice(5))})?.click(); "host"`
+                : "";
       if (script) {
         await window.webContents
           .executeJavaScript(script)

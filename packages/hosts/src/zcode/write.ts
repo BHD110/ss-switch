@@ -360,8 +360,10 @@ export class ZcodeWriter implements HostWriter {
       try {
         const entry = db
           .prepare(
-            `SELECT data FROM session_entry WHERE type='runtime/model_selection'
-             ORDER BY time_updated DESC LIMIT 1`,
+            `SELECT data FROM session_entry
+           WHERE type='runtime/model_selection'
+             AND data NOT LIKE '%Explore%' AND data NOT LIKE '%explore%'
+           ORDER BY time_updated DESC LIMIT 1`,
           )
           .get() as { data: string } | undefined;
         if (entry) {

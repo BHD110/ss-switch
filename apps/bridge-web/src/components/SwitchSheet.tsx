@@ -19,7 +19,7 @@ interface Props {
   sessions: StoredSession[];
   history: TxSummary[];
   onClose(): void;
-  onDone(): void;
+  onDone(result?: ImportResult): void;
 }
 
 interface Candidate {
@@ -37,9 +37,12 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [copied, setCopied] = useState(false);
+  const [allowRunning, setAllowRunning] = useState(false);
 
   const sourceRef = source ? `${source.host}:${source.nativeId}` : "";
+  const sourceId = source?.id ?? "";
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset only when the selected session changes
   useEffect(() => {
     if (!open || !source) return;
     setTargetHost(source.host === "qoder" ? "zcode" : "qoder");
@@ -49,7 +52,8 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
     setResult(undefined);
     setError(undefined);
     setCopied(false);
-  }, [open, source]);
+    setAllowRunning(false);
+  }, [open, sourceId]);
 
   const candidates = useMemo<Candidate[]>(() => {
     if (!source) return [];
@@ -93,7 +97,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
   }, [open, mode, candidates, targetNativeId, source?.id, source]);
 
   useEffect(() => {
-    if (!open || !source) return;
+    if (!open || !source || result) return;
     setPlan(undefined);
     setError(undefined);
     const request: ImportPlanRequest = {
@@ -101,6 +105,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
       targetHost,
       mode: mode === "overwrite" ? "overwrite" : "new_copy",
       ...(mode === "overwrite" && targetNativeId ? { targetNativeId } : {}),
+      ...(allowRunning && mode === "new_copy" ? { allowRunningWrite: true } : {}),
     };
     const timer = setTimeout(() => {
       bridge()
@@ -118,16 +123,19 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
     targetHost,
     mode: mode === "overwrite" ? "overwrite" : "new_copy",
     ...(mode === "overwrite" && targetNativeId ? { targetNativeId } : {}),
+    ...(allowRunning && mode === "new_copy" ? { allowRunningWrite: true } : {}),
     title: source.title,
     cwd: source.cwd,
   };
 
+  // The plan re-checks the target at request time, so a stale host status must
+  // not keep the confirm button disabled after the app has been closed.
+  const targetBusy =
+    (plan?.blockers.some((item) => /running|运行/i.test(item)) ?? false) ||
+    (plan?.requiresRestart ?? false);
+
   const blocked =
-    !plan ||
-    busy ||
-    plan.blockers.length > 0 ||
-    (mode === "overwrite" && !plan.overwriteAllowed) ||
-    !targetStatus?.writeReady;
+    !plan || busy || plan.blockers.length > 0 || (mode === "overwrite" && !plan.overwriteAllowed);
 
   const confirm = async (): Promise<void> => {
     setBusy(true);
@@ -136,7 +144,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
       const outcome = await bridge().runImport(request);
       setResult(outcome);
       if (!outcome.ok && outcome.error) setError(outcome.error);
-      onDone();
+      onDone(outcome);
     } catch (cause) {
       setError(String(cause));
     } finally {
@@ -262,9 +270,25 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
                 ))}
               </div>
               {targetStatus && !targetStatus.writeReady && (
-                <div className="field-hint warn">
-                  {targetStatus.writeBlockedReason ?? "目标当前不可写入"}
+                <div className="field-hint">
+                  扫描时状态：{targetStatus.writeBlockedReason ?? "目标暂不可写"}
+                  （重新检查计划时会再次确认）
                 </div>
+              )}
+              {targetBusy && mode === "new_copy" && (
+                <label className="radio running-write">
+                  <input
+                    type="checkbox"
+                    checked={allowRunning}
+                    onChange={(event) => setAllowRunning(event.target.checked)}
+                  />
+                  <span>
+                    <strong>仍然写入（需重启目标应用）</strong>
+                    <em>
+                      实验性：立即写库，目标启动后才能看到。若目标退出时回写索引，可能需要在下次启动后重新复制。
+                    </em>
+                  </span>
+                </label>
               )}
             </div>
 

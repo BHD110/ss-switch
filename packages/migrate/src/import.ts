@@ -84,6 +84,8 @@ export async function planImport(
     }
   }
 
+  const warnings = [...detail.warnings];
+  let requiresRestart = false;
   if (writer) {
     try {
       await writer.assertSchema();
@@ -91,7 +93,16 @@ export async function planImport(
       blockers.push(error instanceof Error ? error.message : String(error));
     }
     if (await writer.isBusy()) {
-      blockers.push(`${targetHost} appears to be running; close it and retry (writes are refused)`);
+      if (request.allowRunningWrite === true && request.mode === "new_copy") {
+        requiresRestart = true;
+        warnings.push(
+          `${targetHost} 正在运行：本次写入会立即落库，但需要重启目标应用才能看到；若目标退出时回写索引，可能需要在下次启动后重新复制。覆盖模式不支持运行中写入。`,
+        );
+      } else {
+        blockers.push(
+          `${targetHost} appears to be running; close it and retry (writes are refused)`,
+        );
+      }
     }
   }
 
@@ -109,10 +120,11 @@ export async function planImport(
     parts: detail.parts.length,
     toolCalls,
     dropped,
-    warnings: detail.warnings,
+    warnings,
     blockers,
     overwriteAllowed,
     overwriteReason,
+    requiresRestart,
     backupNote,
     writeBlockedReason: blockers[0],
   };
