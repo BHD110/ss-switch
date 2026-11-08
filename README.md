@@ -78,9 +78,10 @@ pnpm package:win
 
 ```bash
 pnpm test          # 解析器 / 存储 / 导入计划（17 项）
-pnpm test:e2e      # 复制 → 导回覆盖 → 撤销 → 分叉 → 版本拒绝 → 写后不误判运行（18 项，全部在临时副本上）
+pnpm test:e2e      # 复制 → 导回覆盖 → 撤销 → 分叉 → 版本拒绝 → ZCode 字段完整性（24 项，全部在临时副本上）
 pnpm m0            # 写入器往返 + Qoder CLI 可见性（临时副本）
 pnpm doctor        # 只读检查四个 Agent 的根目录、版本、会话数、写入条件
+pnpm repair:zcode  # 修复已有 ZCode 导入（先退出 ZCode；自动备份由写入前流程负责）
 ```
 
 已确认：
@@ -106,7 +107,9 @@ pnpm probe cleanup   # 删除测试会话，源数据不变
 
 - Qoder 的桌面列表与 CLI 列表是两套存储；ss switch 同时写 JSONL 与桌面库。桌面不会实时导入 JSONL（已实测），需要写入 DB 并重启 Qoder。
 - 写入 Qoder 时会复用同一目录下真实会话的 `workspace_id` / `execution_target_json` 和最近可用的模型 key；找不到 workspace 时退回 NULL（现有数据允许）。源模型记录在 `extra_json.bridgeSourceModel`。
-- ZCode 的 `tasks-index.sqlite` 是桌面索引；后台是否会在某些情况下从主库重建索引，尚未在真实桌面验证。
+- ZCode 的桌面列表按 `tasks.provider` 过滤，并且要求 `session.project_id` 与真实规则一致（`proj_` + ASCII 路径段）；Bridge 现在按真实字段写入 `project_id`、`provider`、`meta_json.provider`，并预先写 `task_group_admissions` / 正数排序，避免会话被桌面归到隐藏分组。
+- ZCode 冷恢复会从工具调用重建读/写状态（`readFileState`、patch）；导入无法提供这些快照，工具调用会以**文本卡片**形式导入（保留名称、输入、输出），不再写成 `tool` part。assistant 消息写入 `tokens`/`cost` 占位，否则恢复会报 `Cannot read properties of undefined (reading 'input')`。
+- 已有导入记录可用 `pnpm repair:zcode` 修复（需先退出 ZCode）：修正 project/provider/metadata、补 tokens、把工具调用转为文本、调整任务排序。
 - 搜索：Qoder 会写 `chat_session_search_segments` 以保持可搜索；Codex/WorkBuddy 只读；ZCode 会写 `searchable_text`，但更复杂的索引不复制。
 - 附件/图片只保留引用或文本说明，不搬运二进制，保真度会标为“适配”。
 - 覆盖是同 ID 替换，风险最高；任一条保护不满足就只允许“新建副本”。

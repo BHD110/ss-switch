@@ -21,7 +21,8 @@
     "probe": "node scripts/build-node.mjs scripts/verify-live.ts .tmp/verify-live.cjs && node .tmp/verify-live.cjs",
     "package:win": "pnpm --filter @bridge/desktop package",
     "test:e2e": "node scripts/build-node.mjs scripts/e2e.ts .tmp/e2e.cjs && node .tmp/e2e.cjs",
-    "package:portable": "pnpm build && cd apps/bridge-desktop && pnpm exec electron-builder --win portable"
+    "package:portable": "pnpm build && cd apps/bridge-desktop && pnpm exec electron-builder --win portable",
+    "repair:zcode": "node scripts/build-node.mjs scripts/repair-zcode.ts .tmp/repair-zcode.cjs && node .tmp/repair-zcode.cjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.0",

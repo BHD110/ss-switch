@@ -125,6 +125,70 @@ async function main(): Promise<void> {
   });
   check("replan.no-running-blocker", replan.blockers.length === 0, JSON.stringify(replan.blockers));
 
+  const slug = workspace
+    .toLowerCase()
+    .split(String.fromCharCode(92))
+    .join("/")
+    .split("/")
+    .map((segment) => segment.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""))
+    .filter(Boolean)
+    .join("-");
+  const zdbCheck = new DatabaseSync(join(root, "zcode", ".zcode", "cli", "db", "db.sqlite"), {
+    readOnly: true,
+  });
+  const importedProject = (
+    zdbCheck
+      .prepare("SELECT project_id FROM session WHERE id=?")
+      .get(copyResult.targetNativeId!) as {
+      project_id: string;
+    }
+  ).project_id;
+  zdbCheck.close();
+  check("zcode.project-id", importedProject === `proj_${slug}`, importedProject);
+
+  const idxCheck = new DatabaseSync(join(root, "zcode", ".zcode", "v2", "tasks-index.sqlite"), {
+    readOnly: true,
+  });
+  const taskRow = idxCheck
+    .prepare("SELECT provider, handoff_pending FROM tasks WHERE task_id=?")
+    .get(copyResult.targetNativeId!) as { provider: string; handoff_pending: number };
+  const admission = idxCheck
+    .prepare("SELECT user_organized FROM task_group_admissions WHERE task_id=?")
+    .get(copyResult.targetNativeId!) as { user_organized: number } | undefined;
+  const order = idxCheck
+    .prepare(
+      "SELECT sort_order FROM task_group_view_node_orders WHERE node_type='task' AND node_key=json_array(?,?)",
+    )
+    .get(workspace, copyResult.targetNativeId!) as { sort_order: number } | undefined;
+  idxCheck.close();
+  check("zcode.provider", taskRow.provider !== "account", taskRow.provider);
+  check("zcode.user-organized", admission?.user_organized === 1, String(admission?.user_organized));
+  check("zcode.order-positive", (order?.sort_order ?? 0) > 0, String(order?.sort_order));
+
+  const zdbPayload = new DatabaseSync(join(root, "zcode", ".zcode", "cli", "db", "db.sqlite"), {
+    readOnly: true,
+  });
+  const assistantRow = zdbPayload
+    .prepare(
+      "SELECT data FROM message WHERE session_id=? AND json_extract(data,'$.role')='assistant' LIMIT 1",
+    )
+    .get(copyResult.targetNativeId!) as { data: string } | undefined;
+  const assistantData = assistantRow ? (JSON.parse(assistantRow.data) as { tokens?: unknown }) : {};
+  const toolCount = (
+    zdbPayload
+      .prepare(
+        "SELECT COUNT(*) AS c FROM part WHERE session_id=? AND json_extract(data,'$.type')='tool'",
+      )
+      .get(copyResult.targetNativeId!) as { c: number }
+  ).c;
+  zdbPayload.close();
+  check(
+    "zcode.assistant-tokens",
+    Boolean(assistantData.tokens),
+    JSON.stringify(assistantData.tokens),
+  );
+  check("zcode.tools-as-text", toolCount === 0, `${toolCount} tool parts`);
+
   const lineage = store.lineageTouching("zcode", copyResult.targetNativeId!);
   check(
     "lineage.copy",

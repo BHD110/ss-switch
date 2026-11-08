@@ -597,6 +597,18 @@ export class ZcodeWriter implements HostWriter {
     }
   }
 
+  private providerFor(db: Database, model: string): string {
+    const row = db
+      .prepare(
+        "SELECT provider FROM tasks WHERE model=? AND provider IS NOT NULL AND provider <> '' LIMIT 1",
+      )
+      .get(model) as { provider: string } | undefined;
+    if (row?.provider) return row.provider;
+    const modelId = model.split("/").pop() ?? model;
+    if (/glm/i.test(modelId)) return "glm";
+    return "glm";
+  }
+
   private upsertTask(input: {
     nativeId: string;
     cwd: string;
@@ -644,15 +656,18 @@ export class ZcodeWriter implements HostWriter {
         ).run(projectId, input.cwd);
       }
       const model = `${input.selection.providerId}/${input.selection.modelId}`;
-      const provider = input.selection.providerId.split(":")[0] ?? "zcode";
+      // The desktop filters its task list by a provider id such as "glm".
+      // "account" (the prefix of account:bigmodel-...) matches no filter and
+      // hides the session, so reuse a provider already stored for this model.
+      const provider = this.providerFor(db, model);
       db.prepare(
         `INSERT INTO tasks(workspace_key, workspace_path, task_id, title, task_status, provider, mode,
                            model, created_at, updated_at, pinned, archived, deleted, title_overridden,
                            meta_json, searchable_text, host_id, root_path, project_id, sort_order,
                            cli_title, handoff_pending, cli_title_source, cli_created_at, cli_updated_at,
                            cli_last_outcome, cli_deleted)
-         VALUES(?,?,?,?, 'completed', ?, 'build', ?, ?, ?, 0,0,0,0, ?, ?, 'local', ?, ?, 0,
-                ?, 0, 'custom', ?, ?, 'completed', 0)
+         VALUES(?,?,?,?, 'completed', ?, 'build', ?, ?, ?, 0,0,0,0, ?, ?, 'local', ?, ?, NULL,
+                ?, 8, 'generated', ?, ?, 'completed', 0)
          ON CONFLICT(workspace_key, task_id) DO UPDATE SET
            title=excluded.title, task_status=excluded.task_status, model=excluded.model,
            updated_at=excluded.updated_at, meta_json=excluded.meta_json,
@@ -687,6 +702,32 @@ export class ZcodeWriter implements HostWriter {
         input.createdAt,
         input.updatedAt,
       );
+
+      // The sidebar only treats a task as user-organized when an order row
+      // already exists; without one the desktop inserts it at a negative
+      // position and keeps it out of the project list.
+      db.prepare(
+        `INSERT INTO task_group_admissions(workspace_key, task_id, system_kind, user_organized, creation_id)
+         VALUES(?,?,NULL,1,NULL)
+         ON CONFLICT(workspace_key, task_id) DO UPDATE SET user_organized=1`,
+      ).run(input.cwd, input.nativeId);
+      const orderKey = JSON.stringify([input.cwd, input.nativeId]);
+      const maxOrder = (
+        db
+          .prepare("SELECT COALESCE(MAX(sort_order),0) AS m FROM task_group_view_node_orders")
+          .get() as {
+          m: number;
+        }
+      ).m;
+      const nextOrder = Math.max(maxOrder + 1, 1);
+      db.prepare(
+        `INSERT OR IGNORE INTO task_group_view_node_orders(node_type, node_key, sort_order, created_at, updated_at)
+         VALUES('task', ?, ?, ?, ?)`,
+      ).run(orderKey, nextOrder, input.createdAt, input.updatedAt);
+      db.prepare(
+        `UPDATE task_group_view_node_orders SET sort_order=?, updated_at=?
+         WHERE node_type='task' AND node_key=? AND sort_order < 0`,
+      ).run(nextOrder, input.updatedAt, orderKey);
       db.exec("COMMIT");
     } catch (error) {
       try {
@@ -726,6 +767,19 @@ function baseMessageData(
   const data: Record<string, unknown> = {
     role,
     time: role === "user" ? { created: ts } : { created: ts, completed: ts },
+    // Resume reads message.tokens.input for every assistant message; without
+    // it ZCode throws "Cannot read properties of undefined (reading 'input')".
+    ...(role === "assistant"
+      ? {
+          cost: 0,
+          tokens: {
+            input: 0,
+            output: 0,
+            reasoning: 0,
+            cache: { read: 0, write: 0 },
+          },
+        }
+      : {}),
     agent: "zcode-agent",
     path: { cwd, root: cwd },
     modelId: selection.modelId,
@@ -755,22 +809,27 @@ function toZcodePart(part: StoredPart, turn: StoredTurn): PlannedPart | undefine
         data: { type: "reasoning", text: part.text, time: { start, end } },
       };
     case "tool_call": {
+      // ZCode's cold-resume path rebuilds read/write state from tool metadata
+      // (readFileState, patches). Imported calls have no such snapshots, so a
+      // tool part crashes the conversation with "string argument ... undefined".
+      // Keep the evidence as text: readable, and safe to resume.
       const payload = part.payload as Record<string, unknown> | undefined;
-      const response = toolOutputOf(part);
+      const name = part.toolName ?? "tool";
+      const input = payload?.input ?? {};
+      const output = toolOutputOf(part);
+      const text = [
+        `工具调用：${name}`,
+        "输入：",
+        clip(JSON.stringify(input, null, 2), 3000),
+        ...(output === undefined ? [] : ["", "输出：", clip(String(output), 6000)]),
+      ].join(String.fromCharCode(10));
       return {
-        id: partId("tool"),
+        id: partId("text"),
         data: {
-          type: "tool",
-          callID: part.toolCallId ?? part.id,
-          tool: part.toolName ?? "tool",
-          state: {
-            status: part.toolState === "error" ? "error" : "completed",
-            input: payload?.input ?? {},
-            output: response,
-            title: part.toolName ?? "tool",
-            metadata: {},
-            time: { start, end },
-          },
+          type: "text",
+          text,
+          time: { start, end },
+          metadata: { bridgeTool: name },
         },
       };
     }
@@ -806,15 +865,28 @@ function toolOutputOf(part: StoredPart): unknown {
   return payload?.result ?? payload?.output ?? "";
 }
 
+function clip(value: string, max: number): string {
+  return value.length > max
+    ? `${value.slice(0, max)}
+…（已截断，共 ${value.length} 字）`
+    : value;
+}
+
 function partId(kind: string): string {
   return `part_${Date.now().toString(36)}_${randomUUID()}_${kind}`;
 }
 
 function projectId(cwd: string): string {
+  // Real ZCode ids keep the ASCII path segments and drop non-ASCII ones:
+  // D:\项目\hy-memory -> proj_d-hy-memory.
   const slug = cwd
-    .replace(/^.*[\\/]/, "")
-    .replace(/[^A-Za-z0-9_-]/g, "-")
-    .toLowerCase();
+    .toLowerCase()
+    .split(String.fromCharCode(92))
+    .join("/")
+    .split("/")
+    .map((segment) => segment.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""))
+    .filter(Boolean)
+    .join("-");
   return `proj_${slug || "default"}`;
 }
 
