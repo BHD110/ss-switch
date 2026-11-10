@@ -35,6 +35,7 @@ export async function planImport(
 ): Promise<ImportPlan> {
   const blockers: string[] = [];
   const targetHost = request.targetHost;
+  const targetName = ctx.adapters[targetHost].displayName;
   const writer = ctx.writers[targetHost];
   const sourceAdapter = ctx.adapters[request.source.host];
   const detail = await readSource(sourceAdapter, request.source);
@@ -44,24 +45,23 @@ export async function planImport(
     (part) => part.kind === "tool_call" && Boolean(part.toolCallId),
   ).length;
 
-  if (!writer) blockers.push(`${targetHost} is read-only in this version`);
-  if (request.source.host === targetHost)
-    blockers.push("Source and target must be different hosts");
+  if (!writer) blockers.push(`当前版本还不能复制到 ${targetName}。`);
+  if (request.source.host === targetHost) blockers.push("请选择另一个应用。");
 
   let overwriteAllowed = request.mode === "new_copy";
   let overwriteReason: string | undefined;
   if (request.mode === "overwrite") {
     if (!request.targetNativeId) {
       overwriteAllowed = false;
-      overwriteReason = "No target session was selected";
+      overwriteReason = "请选择要覆盖的会话。";
     } else if (!writer) {
       overwriteAllowed = false;
-      overwriteReason = "Target host is read-only";
+      overwriteReason = `当前版本还不能覆盖 ${targetName} 的会话。`;
     } else {
       const touching = ctx.store.lineageTouching(targetHost, request.targetNativeId);
       if (!touching) {
         overwriteAllowed = false;
-        overwriteReason = "This session was not imported by Bridge, so it cannot be overwritten";
+        overwriteReason = "只能覆盖与这次会话有过复制记录的会话。";
       } else {
         const expected =
           touching.side === "dst" ? touching.lineage.dstFpAtImport : touching.lineage.srcFpAtImport;
@@ -70,11 +70,10 @@ export async function planImport(
         const current = await ctx.adapters[targetHost].deepFingerprint(request.targetNativeId);
         if (!current) {
           overwriteAllowed = false;
-          overwriteReason = "Target session no longer exists";
+          overwriteReason = "找不到要覆盖的会话，请重新选择。";
         } else if (current !== expected) {
           overwriteAllowed = false;
-          overwriteReason =
-            "Target has changed since the import (new messages). Use “new copy” or archive it first";
+          overwriteReason = "要覆盖的会话在上次复制后有改动，请选择「新建会话」。";
         } else {
           overwriteAllowed = true;
         }
@@ -94,17 +93,13 @@ export async function planImport(
       if (request.allowRunningWrite === true && request.mode === "new_copy") {
         requiresRestart = true;
         warnings.push(
-          `${targetHost} 正在运行：本次写入会立即落库，但需要重启目标应用才能看到；若目标退出时回写索引，可能需要在下次启动后重新复制。覆盖模式不支持运行中写入。`,
+          `${targetName} 正在运行。复制后请重启 ${targetName}，再查看新会话。如果找不到，请关闭应用后再复制一次。`,
         );
       } else {
-        blockers.push(
-          `${targetHost} appears to be running; close it and retry (writes are refused)`,
-        );
+        blockers.push(`${targetName} 正在运行。请先退出 ${targetName}，再重新检查。`);
       }
     }
   }
-
-  const backupNote = BACKUP_NOTES[targetHost];
 
   return {
     source: request.source,
@@ -120,7 +115,7 @@ export async function planImport(
     overwriteAllowed,
     overwriteReason,
     requiresRestart,
-    backupNote,
+    backupNote: "复制前会自动备份相关数据。",
     writeBlockedReason: blockers[0],
   };
 }
@@ -140,7 +135,7 @@ export async function runImport(
       turns: plan.turns,
       parts: plan.parts,
       warnings: plan.warnings,
-      error: [...plan.blockers, plan.overwriteReason].filter(Boolean).join("; "),
+      error: [...plan.blockers, plan.overwriteReason].filter(Boolean).join(" "),
     };
   }
   const writer = ctx.writers[request.targetHost]!;
@@ -402,13 +397,6 @@ const DROP_REASON: Record<HostId, string> = {
   workbuddy: "WorkBuddy transcript has no equivalent record",
 };
 
-const BACKUP_NOTES: Record<HostId, string> = {
-  qoder: "Backs up main.sqlite (+wal/shm) and the target JSONL before writing",
-  zcode: "Backs up db.sqlite and tasks-index.sqlite (+wal/shm) before writing",
-  codex: "Backs up sqlite/codex.db, session_index.jsonl and the target rollout before writing",
-  workbuddy: "Backs up workbuddy.db (+wal/shm) and the target transcript before writing",
-};
-
 function newNativeId(host: HostId): string {
   if (host === "zcode") return `sess_${randomUUID()}`;
   return randomUUID();
@@ -456,7 +444,10 @@ export async function writerReadiness(
     try {
       await writer.assertSchema();
       if (await writer.isBusy()) {
-        result[host] = { ready: false, reason: "Host is running; close it to write" };
+        result[host] = {
+          ready: false,
+          reason: `${ctx.adapters[host].displayName} 正在运行。`,
+        };
       } else {
         result[host] = { ready: true };
       }

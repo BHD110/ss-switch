@@ -70,9 +70,9 @@ export function stateLabel(state: string): string {
 export function fidelityLabel(fidelity: string): string {
   switch (fidelity) {
     case "high":
-      return "完整";
+      return "可保留对话内容";
     case "adapted":
-      return "适配";
+      return "部分内容的显示方式可能不同";
     case "view_only":
       return "仅查看";
     default:

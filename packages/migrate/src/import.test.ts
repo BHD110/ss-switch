@@ -7,7 +7,7 @@ import { resolvePaths } from "@bridge/hosts";
 import { BridgeStore } from "@bridge/store";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { type ImportContext, planImport, runImport } from "./import";
+import { type ImportContext, planImport, runImport, writerReadiness } from "./import";
 
 const roots: string[] = [];
 const stores: BridgeStore[] = [];
@@ -222,7 +222,12 @@ describe("planImport", () => {
       targetHost: "zcode",
       mode: "new_copy",
     });
-    expect(busy.blockers.join(" ")).toContain("running");
+    expect(busy.blockers).toEqual(["Fake 正在运行。请先退出 Fake，再重新检查。"]);
+    expect(busy.backupNote).toBe("复制前会自动备份相关数据。");
+    expect((await writerReadiness(ctx)).zcode).toEqual({
+      ready: false,
+      reason: "Fake 正在运行。",
+    });
   });
 
   it("allows overwrite only when the target fingerprint is unchanged", async () => {
@@ -253,7 +258,7 @@ describe("planImport", () => {
     (ctx.adapters.zcode as FakeAdapter).fp = "fp2";
     const changed = await planImport(ctx, request);
     expect(changed.overwriteAllowed).toBe(false);
-    expect(changed.overwriteReason).toContain("changed");
+    expect(changed.overwriteReason).toContain("上次复制后有改动");
   });
 
   it("can opt into writing a new copy into a running target", async () => {
@@ -280,7 +285,7 @@ describe("planImport", () => {
       targetNativeId: "b",
       allowRunningWrite: true,
     });
-    expect(plan.blockers.join(" ")).toContain("running");
+    expect(plan.blockers.join(" ")).toContain("正在运行");
   });
 
   it("returns a failed result without writing when blocked", async () => {
@@ -293,6 +298,6 @@ describe("planImport", () => {
     });
     expect(result.ok).toBe(false);
     expect(writer.inserted).toBeUndefined();
-    expect(result.error).toContain("running");
+    expect(result.error).toContain("正在运行");
   });
 });
