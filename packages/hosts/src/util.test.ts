@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { cleanUserText, orderByChain, qoderProjectSlug, titleFromText } from "./util";
+import {
+  cleanUserText,
+  codexRolloutName,
+  orderByChain,
+  qoderProjectSlug,
+  titleFromText,
+  workbuddyProjectSlug,
+} from "./util";
 
 describe("cleanUserText", () => {
   it("prefers the explicit user query inside an envelope", () => {
@@ -28,6 +35,29 @@ describe("qoderProjectSlug", () => {
   it("replaces each non-alphanumeric character with one dash", () => {
     expect(qoderProjectSlug("D:\\项目\\hy-memory")).toBe("D-----hy-memory");
     expect(qoderProjectSlug("C:/Users/a/repo")).toBe("C--Users-a-repo");
+  });
+});
+
+describe("workbuddyProjectSlug", () => {
+  it("matches the folders the desktop already writes", () => {
+    expect(workbuddyProjectSlug("c:\\Users\\a1866\\WorkBuddy\\2026-11-04-19-15-59")).toBe(
+      "c-Users-a1866-WorkBuddy-2026-11-04-19-15-59",
+    );
+    expect(workbuddyProjectSlug("D:\\工作\\lcgf-obsidian\\创业\\创业")).toBe(
+      "d-工作-lcgf-obsidian-创业-创业",
+    );
+    expect(
+      workbuddyProjectSlug("d:\\codeSource\\product\\08-工具类\\C-Clean\\WindowsCleaner-7.5"),
+    ).toBe("d-codeSource-product-08-工具类-C-Clean-WindowsCleaner-7.5");
+  });
+});
+
+describe("codexRolloutName", () => {
+  it("uses local time and the session id", () => {
+    const created = new Date(2026, 10, 10, 14, 33, 9).getTime();
+    expect(codexRolloutName(created, "01a1c429-17ba-7eb2-b71a-ac5139e82c57")).toBe(
+      "rollout-2026-11-10T14-33-09-01a1c429-17ba-7eb2-b71a-ac5139e82c57.jsonl",
+    );
   });
 });
 

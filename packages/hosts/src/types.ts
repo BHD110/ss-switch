@@ -54,6 +54,8 @@ export interface WriteOutcome {
   parts: number;
   /** Rows written to the host's message table, used by post-write verification. */
   nativeMessages: number;
+  /** Transcript file written or replaced, when the host keeps one on disk. */
+  nativeFile?: string;
   dropped: { kind: string; count: number; reason: string }[];
   warnings: string[];
   openCommand?: string;

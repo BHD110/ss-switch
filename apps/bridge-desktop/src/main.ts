@@ -72,7 +72,7 @@ function bridgeContext(): ImportContext {
   mkdirSyncSafe(userData);
   store = new BridgeStore(join(userData, "bridge.db"));
   // Bump when normalization changes so stale cached transcripts are not reused.
-  const PARSER_VERSION = "2";
+  const PARSER_VERSION = "3";
   if (store.getSetting("parser_version") !== PARSER_VERSION) {
     store.clearDetailCache();
     store.setSetting("parser_version", PARSER_VERSION);
@@ -167,9 +167,7 @@ async function scanAll(ctx: ImportContext, force: boolean): Promise<ScanReport> 
   for (const status of hosts) {
     const write = readiness[status.id];
     status.writeReady = Boolean(write?.ready);
-    status.writeBlockedReason =
-      write?.reason ??
-      (status.id === "qoder" || status.id === "zcode" ? undefined : "Read-only in this version");
+    status.writeBlockedReason = write?.reason ?? (write ? undefined : "No writer for this host");
     ctx.store.upsertHost(status);
   }
   scanAt = Date.now();

@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
 
 import type {
   DivergenceInfo,
@@ -16,7 +15,6 @@ import type {
   UndoResult,
 } from "@bridge/contracts";
 import type { HostAdapter, HostPaths, HostWriter } from "@bridge/hosts";
-import { qoderProjectSlug } from "@bridge/hosts";
 import type { BridgeStore } from "@bridge/store";
 import { verifyHost } from "@bridge/verify";
 
@@ -106,10 +104,7 @@ export async function planImport(
     }
   }
 
-  const backupNote =
-    targetHost === "qoder"
-      ? "Backs up main.sqlite (+wal/shm) and the target JSONL before writing"
-      : "Backs up db.sqlite and tasks-index.sqlite (+wal/shm) before writing";
+  const backupNote = BACKUP_NOTES[targetHost];
 
   return {
     source: request.source,
@@ -149,7 +144,6 @@ export async function runImport(
     };
   }
   const writer = ctx.writers[request.targetHost]!;
-  const _adapter = ctx.adapters[request.targetHost];
   const sourceAdapter = ctx.adapters[request.source.host];
   const detail = await readSource(sourceAdapter, request.source);
   const sourceFingerprint = (await sourceAdapter.deepFingerprint(request.source.nativeId)) ?? "";
@@ -157,24 +151,19 @@ export async function runImport(
   const targetNativeId =
     request.mode === "overwrite" && request.targetNativeId
       ? request.targetNativeId
-      : request.targetHost === "qoder"
-        ? randomUUID()
-        : `sess_${randomUUID()}`;
+      : newNativeId(request.targetHost);
 
-  const targetJsonl =
-    request.targetHost === "qoder"
-      ? join(
-          ctx.paths.qoderConfigDir,
-          "projects",
-          qoderProjectSlug(request.cwd || detail.session.cwd || process.cwd()),
-          `${targetNativeId}.jsonl`,
-        )
+  const existingFile =
+    request.mode === "overwrite"
+      ? (await ctx.adapters[request.targetHost].scan()).find(
+          (session) => session.nativeId === targetNativeId,
+        )?.rawRef
       : undefined;
 
   const backupFiles = backupTargets(
     request.targetHost,
     ctx.paths,
-    targetJsonl ? [targetJsonl] : [],
+    existingFile ? [existingFile] : [],
   );
   const backup = await createBackup(ctx.backupRoot, txId, backupFiles);
   ctx.store.createTx({
@@ -222,7 +211,7 @@ export async function runImport(
       messages: outcome.nativeMessages,
       parts: outcome.parts,
       turns: outcome.turns,
-      file: targetJsonl,
+      file: outcome.nativeFile ?? existingFile,
     });
     if (!verification.ok) {
       throw new Error(
@@ -399,9 +388,28 @@ function fidelityFor(detail: SessionDetail): Fidelity {
 const DROPPABLE: Record<HostId, Set<StoredPart["kind"]>> = {
   qoder: new Set(["image", "file", "timeline", "step", "system"]),
   zcode: new Set(["image", "system"]),
-  codex: new Set(),
-  workbuddy: new Set(),
+  codex: new Set(["image", "attachment", "file", "timeline", "step", "system"]),
+  workbuddy: new Set(["image", "attachment", "file", "timeline", "step", "system"]),
 };
+
+const DROP_REASON: Record<HostId, string> = {
+  qoder: "Qoder has no equivalent part",
+  zcode: "ZCode has no equivalent part",
+  codex: "Codex rollout has no equivalent record",
+  workbuddy: "WorkBuddy transcript has no equivalent record",
+};
+
+const BACKUP_NOTES: Record<HostId, string> = {
+  qoder: "Backs up main.sqlite (+wal/shm) and the target JSONL before writing",
+  zcode: "Backs up db.sqlite and tasks-index.sqlite (+wal/shm) before writing",
+  codex: "Backs up sqlite/codex.db, session_index.jsonl and the target rollout before writing",
+  workbuddy: "Backs up workbuddy.db (+wal/shm) and the target transcript before writing",
+};
+
+function newNativeId(host: HostId): string {
+  if (host === "zcode") return `sess_${randomUUID()}`;
+  return randomUUID();
+}
 
 function droppedParts(
   detail: SessionDetail,
@@ -417,8 +425,7 @@ function droppedParts(
   return [...counts.entries()].map(([kind, count]) => ({
     kind,
     count,
-    reason:
-      targetHost === "qoder" ? "Qoder has no equivalent part" : "ZCode has no equivalent part",
+    reason: DROP_REASON[targetHost] ?? "Target has no equivalent part",
   }));
 }
 

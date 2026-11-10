@@ -116,6 +116,33 @@ export function qoderProjectSlug(cwd: string): string {
   return cwd.replace(/[^A-Za-z0-9]/g, "-");
 }
 
+/**
+ * WorkBuddy project folder: real data keeps dots and non-ASCII path segments,
+ * lowercases the Windows drive letter and turns separators into one dash.
+ */
+export function workbuddyProjectSlug(cwd: string): string {
+  const normalized = cwd.replace(/[\\/:]+/g, "-").replace(/^-+|-+$/g, "");
+  return normalized.replace(/^[A-Za-z](?=-)/, (letter) => letter.toLowerCase()) || "default";
+}
+
+/** Codex rollout file name: local time, `rollout-YYYY-MM-DDTHH-mm-ss-<sessionId>`. */
+export function codexRolloutName(createdAt: number, nativeId: string): string {
+  const date = new Date(createdAt);
+  const stamp = [date.getFullYear(), pad2(date.getMonth() + 1), pad2(date.getDate())].join("-");
+  const clock = [pad2(date.getHours()), pad2(date.getMinutes()), pad2(date.getSeconds())].join("-");
+  return `rollout-${stamp}T${clock}-${nativeId}.jsonl`;
+}
+
+/** Codex stores rollouts under sessions/YYYY/MM/DD. */
+export function codexRolloutDir(createdAt: number): [string, string, string] {
+  const date = new Date(createdAt);
+  return [String(date.getFullYear()), pad2(date.getMonth() + 1), pad2(date.getDate())];
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
 /** Qoder and Claude Code style parent chain → chronological leaf order. */
 export function orderByChain(
   records: { uuid: string; parentUuid?: string | null }[],

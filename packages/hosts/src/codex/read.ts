@@ -37,8 +37,12 @@ export class CodexReader implements HostAdapter {
   readonly id = "codex" as const;
   readonly displayName = "Codex";
   readonly capabilities = emptyCapabilities({
-    writable: false,
-    losses: ["Read-only in V1"],
+    writable: true,
+    desktopWritable: true,
+    losses: [
+      "Encrypted reasoning records stay encrypted on both sides",
+      "Attachments are kept as references, not binaries",
+    ],
   });
 
   private indexCache?: Map<string, SessionIndexEntry>;
@@ -63,8 +67,8 @@ export class CodexReader implements HostAdapter {
       root: this.paths.codexHome,
       version,
       sessionCount: sessions.length,
-      writeReady: false,
-      writeBlockedReason: "Codex import is out of scope for V1",
+      writeReady: installed && existsSync(codexDbPath(this.paths)),
+      writeBlockedReason: installed ? undefined : "Codex data directory not found",
       capabilities: this.capabilities,
       lastScanAt: Date.now(),
     };
@@ -288,12 +292,18 @@ export class CodexReader implements HostAdapter {
           continue;
         }
         if (type === "custom_tool_call" || type === "function_call") {
-          push("tool_call", "assistant", str(payload.name), payload, {
-            toolName: str(payload.name),
-            toolCallId: str(payload.call_id),
-            toolState: payload.status === "completed" ? "ok" : "running",
-            nativePartId: str(payload.id),
-          });
+          push(
+            "tool_call",
+            "assistant",
+            str(payload.name),
+            { ...payload, input: toolInput(payload) },
+            {
+              toolName: str(payload.name),
+              toolCallId: str(payload.call_id),
+              toolState: payload.status === "completed" ? "ok" : "running",
+              nativePartId: str(payload.id),
+            },
+          );
           continue;
         }
         if (type === "custom_tool_call_output" || type === "function_call_output") {
@@ -405,6 +415,21 @@ function looksLikeHarness(text: string): boolean {
     head.startsWith("<instructions") ||
     head.startsWith("<external_")
   );
+}
+
+/** `function_call.arguments` is a JSON string; freeform custom tools are plain text. */
+function toolInput(payload: Record<string, unknown>): unknown {
+  if (Array.isArray(payload.input)) return payload.input;
+  if (payload.input && typeof payload.input === "object") return payload.input;
+  const raw = typeof payload.arguments === "string" ? payload.arguments : payload.input;
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return { input: raw };
+    }
+  }
+  return {};
 }
 
 function blocksText(content: unknown): string | undefined {

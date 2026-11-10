@@ -1,13 +1,15 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BridgeStore } from "../packages/bridge-store/src/index";
 import {
   CodexReader,
+  CodexWriter,
   QoderReader,
   QoderWriter,
   resolvePaths,
   WorkbuddyReader,
+  WorkbuddyWriter,
   ZcodeReader,
   ZcodeWriter,
 } from "../packages/hosts/src/index";
@@ -52,6 +54,9 @@ async function main(): Promise<void> {
     join(live.zcodeHome, "v2", "tasks-index.sqlite"),
     join(root, "zcode", ".zcode", "v2", "tasks-index.sqlite"),
   );
+  copyDbSet(join(live.codexHome, "sqlite", "codex.db"), join(root, ".codex", "sqlite", "codex.db"));
+  copyDbSet(join(live.workbuddyHome, "workbuddy.db"), join(root, ".workbuddy", "workbuddy.db"));
+  mkdirSync(join(root, ".codex", "sessions"), { recursive: true });
 
   const paths = resolvePaths({
     home: root,
@@ -68,7 +73,12 @@ async function main(): Promise<void> {
     zcode: new ZcodeReader(paths),
     workbuddy: new WorkbuddyReader(paths),
   };
-  const writers = { qoder: new QoderWriter(paths), zcode: new ZcodeWriter(paths) };
+  const writers = {
+    qoder: new QoderWriter(paths),
+    codex: new CodexWriter(paths),
+    zcode: new ZcodeWriter(paths),
+    workbuddy: new WorkbuddyWriter(paths),
+  };
   const store = new BridgeStore(join(root, "bridge.db"));
   const ctx: ImportContext = { paths, adapters, writers, store, backupRoot: join(root, "backups") };
 
@@ -196,6 +206,19 @@ async function main(): Promise<void> {
     "dst fingerprint stored",
   );
 
+  // A new copy into Qoder needs its JSONL path for post-write verification.
+  const qoderNew = await runImport(ctx, {
+    source: { host: "zcode", nativeId: copyResult.targetNativeId! },
+    targetHost: "qoder",
+    mode: "new_copy",
+    title: "端到端测试",
+    cwd: workspace,
+  });
+  check("run.qoder-new-copy", qoderNew.ok, qoderNew.error ?? qoderNew.targetNativeId ?? "");
+  const qoderNewRead = await adapters.qoder.read(qoderNew.targetNativeId!);
+  check("qoder.new-copy.readback", qoderNewRead.turns.length === 2, `${qoderNewRead.turns.length}`);
+  check("undo.qoder-new-copy", (await undoImport(ctx, qoderNew.txId)).ok, "removed");
+
   const overwritePlan = await planImport(ctx, {
     source: { host: "zcode", nativeId: copyResult.targetNativeId! },
     targetHost: "qoder",
@@ -269,6 +292,148 @@ async function main(): Promise<void> {
     zSessions.every((session) => session.nativeId !== copyResult.targetNativeId),
     "target gone",
   );
+
+  // ---------------------------------------------------------------- Codex
+  const codexPlan = await planImport(ctx, {
+    source: { host: "qoder", nativeId: qoderId },
+    targetHost: "codex",
+    mode: "new_copy",
+  });
+  check(
+    "plan.codex",
+    codexPlan.blockers.length === 0 && codexPlan.turns === 2,
+    JSON.stringify(codexPlan.blockers),
+  );
+  const codexCopy = await runImport(ctx, {
+    source: { host: "qoder", nativeId: qoderId },
+    targetHost: "codex",
+    mode: "new_copy",
+    title: "端到端测试",
+    cwd: workspace,
+  });
+  check(
+    "run.codex",
+    codexCopy.ok && Boolean(codexCopy.targetNativeId),
+    codexCopy.error ?? codexCopy.targetNativeId ?? "",
+  );
+  const codexId = codexCopy.targetNativeId!;
+  const codexReadback = await adapters.codex.read(codexId);
+  check("codex.readback", codexReadback.turns.length === 2, `${codexReadback.turns.length} turns`);
+  const codexSession = (await adapters.codex.scan()).find((item) => item.nativeId === codexId);
+  check(
+    "codex.rollout-file",
+    Boolean(codexSession?.rawRef.endsWith(".jsonl")),
+    codexSession?.rawRef ?? "missing",
+  );
+  const codexIndex = new DatabaseSync(join(root, ".codex", "sqlite", "codex.db"), {
+    readOnly: true,
+  });
+  const codexCatalog = codexIndex
+    .prepare("SELECT display_title FROM local_thread_catalog WHERE thread_id=?")
+    .get(codexId) as { display_title: string } | undefined;
+  codexIndex.close();
+  check("codex.catalog-row", codexCatalog?.display_title === "端到端测试", "catalog row");
+  const codexIndexLines = readFileSync(join(root, ".codex", "session_index.jsonl"), "utf8");
+  check("codex.session-index", codexIndexLines.includes(codexId), "index entry");
+
+  // ------------------------------------------------------------- WorkBuddy
+  const wbPlan = await planImport(ctx, {
+    source: { host: "qoder", nativeId: qoderId },
+    targetHost: "workbuddy",
+    mode: "new_copy",
+  });
+  check(
+    "plan.workbuddy",
+    wbPlan.blockers.length === 0 && wbPlan.turns === 2,
+    JSON.stringify(wbPlan.blockers),
+  );
+  const wbCopy = await runImport(ctx, {
+    source: { host: "qoder", nativeId: qoderId },
+    targetHost: "workbuddy",
+    mode: "new_copy",
+    title: "端到端测试",
+    cwd: workspace,
+  });
+  check(
+    "run.workbuddy",
+    wbCopy.ok && Boolean(wbCopy.targetNativeId),
+    wbCopy.error ?? wbCopy.targetNativeId ?? "",
+  );
+  const wbId = wbCopy.targetNativeId!;
+  const wbReadback = await adapters.workbuddy.read(wbId);
+  check("workbuddy.readback", wbReadback.turns.length === 2, `${wbReadback.turns.length} turns`);
+  const wbDb = new DatabaseSync(join(root, ".workbuddy", "workbuddy.db"), { readOnly: true });
+  const wbRow = wbDb.prepare("SELECT title, session_settings FROM sessions WHERE id=?").get(wbId) as
+    | { title: string; session_settings: string }
+    | undefined;
+  wbDb.close();
+  check("workbuddy.session-row", wbRow?.title === "端到端测试", wbRow?.title ?? "missing");
+  check(
+    "workbuddy.bridge-marker",
+    Boolean(wbRow && JSON.parse(wbRow.session_settings).bridgeVersion),
+    "marker stored",
+  );
+
+  // Codex -> WorkBuddy proves the two new adapters transfer between each other.
+  const cross = await runImport(ctx, {
+    source: { host: "codex", nativeId: codexId },
+    targetHost: "workbuddy",
+    mode: "new_copy",
+    title: "端到端测试",
+    cwd: workspace,
+  });
+  check("run.codex-to-workbuddy", cross.ok, cross.error ?? cross.targetNativeId ?? "");
+  const crossRead = await adapters.workbuddy.read(cross.targetNativeId!);
+  check("cross.readback", crossRead.turns.length === 2, `${crossRead.turns.length} turns`);
+
+  // Codex overwrite restores the previous rollout through its backup.
+  const codexOverwritePlan = await planImport(ctx, {
+    source: { host: "workbuddy", nativeId: wbId },
+    targetHost: "codex",
+    mode: "overwrite",
+    targetNativeId: codexId,
+  });
+  check(
+    "plan.codex-overwrite",
+    codexOverwritePlan.overwriteAllowed,
+    codexOverwritePlan.overwriteReason ?? "allowed",
+  );
+  const codexOverwrite = await runImport(ctx, {
+    source: { host: "workbuddy", nativeId: wbId },
+    targetHost: "codex",
+    mode: "overwrite",
+    targetNativeId: codexId,
+    title: "端到端测试",
+    cwd: workspace,
+  });
+  check("run.codex-overwrite", codexOverwrite.ok, codexOverwrite.error ?? "");
+  const codexAfterOverwrite = await adapters.codex.read(codexId);
+  check(
+    "codex.overwrite.readback",
+    codexAfterOverwrite.turns.length === 2,
+    `${codexAfterOverwrite.turns.length} turns`,
+  );
+  check("undo.codex-overwrite", (await undoImport(ctx, codexOverwrite.txId)).ok, "restored");
+  check(
+    "codex.overwrite.restored",
+    (await adapters.codex.read(codexId)).turns.length === 2,
+    "backup restored",
+  );
+
+  check("undo.cross", (await undoImport(ctx, cross.txId)).ok, "cross removed");
+  check("undo.workbuddy", (await undoImport(ctx, wbCopy.txId)).ok, "workbuddy removed");
+  check("undo.codex", (await undoImport(ctx, codexCopy.txId)).ok, "codex removed");
+  check(
+    "undo.codex.removed",
+    (await adapters.codex.scan()).every((item) => item.nativeId !== codexId),
+    "catalog and rollout gone",
+  );
+  const wbAfter = new DatabaseSync(join(root, ".workbuddy", "workbuddy.db"), { readOnly: true });
+  const wbGone = wbAfter.prepare("SELECT COUNT(*) AS c FROM sessions WHERE id=?").get(wbId) as {
+    c: number;
+  };
+  wbAfter.close();
+  check("undo.workbuddy.removed", wbGone.c === 0, "row gone");
 
   console.log(
     JSON.stringify({ passed: results.filter((item) => item.ok).length, failed: 0 }, null, 2),

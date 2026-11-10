@@ -214,6 +214,11 @@ export function App() {
             loading={loadingDetail}
             error={detailError}
             selectedHost={selected?.host}
+            writable={
+              selected
+                ? (hosts.find((host) => host.id === selected.host)?.capabilities.writable ?? true)
+                : true
+            }
             onSwitch={() => setSheetOpen(true)}
             onOpenFolder={(path) => void openFolder(path)}
           />

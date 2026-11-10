@@ -10,7 +10,7 @@ import type {
 import { useEffect, useMemo, useState } from "react";
 
 import { bridge } from "../api";
-import { fidelityLabel, HOST_LABEL, num, shortPath } from "../format";
+import { fidelityLabel, HOST_LABEL, HOST_ORDER, num, shortPath } from "../format";
 
 interface Props {
   open: boolean;
@@ -41,11 +41,16 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
 
   const sourceRef = source ? `${source.host}:${source.nativeId}` : "";
   const sourceId = source?.id ?? "";
+  const writableHosts = useMemo(() => {
+    const writable = hosts.filter((host) => host.capabilities.writable).map((host) => host.id);
+    return writable.length ? writable : HOST_ORDER;
+  }, [hosts]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset only when the selected session changes
   useEffect(() => {
     if (!open || !source) return;
-    setTargetHost(source.host === "qoder" ? "zcode" : "qoder");
+    const options = writableHosts.filter((host) => host !== source.host);
+    setTargetHost(options[0] ?? writableHosts[0] ?? "zcode");
     setMode("new_copy");
     setTargetNativeId("");
     setPlan(undefined);
@@ -254,7 +259,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
             <div className="field">
               <div className="field-label">目标 Agent</div>
               <div className="segmented">
-                {(["qoder", "zcode"] as HostId[]).map((host) => (
+                {writableHosts.map((host) => (
                   <button
                     type="button"
                     key={host}

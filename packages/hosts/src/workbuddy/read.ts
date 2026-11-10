@@ -44,8 +44,12 @@ export class WorkbuddyReader implements HostAdapter {
   readonly id = "workbuddy" as const;
   readonly displayName = "WorkBuddy";
   readonly capabilities = emptyCapabilities({
-    writable: false,
-    losses: ["Read-only in V1"],
+    writable: true,
+    desktopWritable: true,
+    losses: [
+      "Tool results are stored inline as text, not in the tool-results folder",
+      "Attachments are kept as references, not binaries",
+    ],
   });
 
   constructor(readonly paths: HostPaths) {}
@@ -60,8 +64,8 @@ export class WorkbuddyReader implements HostAdapter {
       detected: installed,
       root: this.paths.workbuddyHome,
       sessionCount: sessions.length,
-      writeReady: false,
-      writeBlockedReason: "WorkBuddy import is out of scope for V1",
+      writeReady: installed && existsSync(workbuddyDbPath(this.paths)),
+      writeBlockedReason: installed ? undefined : "WorkBuddy data directory not found",
       capabilities: this.capabilities,
       lastScanAt: Date.now(),
     };
@@ -237,12 +241,18 @@ export class WorkbuddyReader implements HostAdapter {
       }
       if (type === "function_call") {
         const output = asRecord(record.output);
-        push("tool_call", "assistant", str(record.name), record, {
-          toolName: str(record.name),
-          toolCallId: str(record.callId),
-          toolState: output ? "ok" : "running",
-          nativePartId: str(record.id),
-        });
+        push(
+          "tool_call",
+          "assistant",
+          str(record.name),
+          { ...record, input: toolInput(record) },
+          {
+            toolName: str(record.name),
+            toolCallId: str(record.callId),
+            toolState: output ? "ok" : "running",
+            nativePartId: str(record.id),
+          },
+        );
         continue;
       }
       if (type === "function_call_result") {
@@ -306,6 +316,17 @@ const HARNESS_MARKERS = [
   "<environment_context",
   "<permissions instructions>",
 ];
+
+/** WorkBuddy stores tool arguments as a JSON string. */
+function toolInput(record: Record<string, unknown>): unknown {
+  const raw = record.arguments;
+  if (typeof raw !== "string") return raw ?? {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { input: raw };
+  }
+}
 
 function wbText(content: unknown, role?: string): string | undefined {
   const blocks = asArray(content);

@@ -1,8 +1,16 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { HostId } from "@bridge/contracts";
 import type { HostPaths } from "@bridge/hosts";
 
-import { zcodeDbPath, zcodeTasksDbPath } from "@bridge/hosts";
+import {
+  codexDbPath,
+  codexIndexPath,
+  workbuddyDbPath,
+  workbuddyProjectsDir,
+  zcodeDbPath,
+  zcodeTasksDbPath,
+} from "@bridge/hosts";
 import { DatabaseSync } from "./sqlite";
 
 export interface VerificationCheck {
@@ -158,6 +166,142 @@ export function verifyZcode(
   return { ok: checks.every((check) => check.ok), checks };
 }
 
+export function verifyCodex(
+  paths: HostPaths,
+  nativeId: string,
+  expected: { messages: number; file?: string },
+): VerificationResult {
+  const checks: VerificationCheck[] = [];
+  const file = expected.file ?? "";
+  let records: Record<string, unknown>[] = [];
+  if (file && existsSync(file)) {
+    try {
+      records = readFileSync(file, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+    } catch {
+      records = [];
+    }
+  }
+  checks.push({
+    name: "rollout",
+    ok: records.length > 0,
+    detail: `${records.length} records`,
+  });
+  const messages = records.filter((record) => {
+    const payload = record.payload as { type?: string } | undefined;
+    return record.type === "response_item" && payload?.type === "message";
+  }).length;
+  checks.push({
+    name: "message-count",
+    ok: messages === expected.messages,
+    detail: `${messages}/${expected.messages}`,
+  });
+
+  const dbPath = codexDbPath(paths);
+  if (existsSync(dbPath)) {
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const row = db
+        .prepare(
+          "SELECT display_title FROM local_thread_catalog WHERE host_id='local' AND thread_id=?",
+        )
+        .get(nativeId) as { display_title: string } | undefined;
+      checks.push({
+        name: "catalog-row",
+        ok: Boolean(row),
+        detail: row?.display_title ?? "missing",
+      });
+    } finally {
+      db.close();
+    }
+  } else {
+    checks.push({ name: "catalog-row", ok: false, detail: dbPath });
+  }
+
+  const indexPath = codexIndexPath(paths);
+  let indexed = false;
+  if (existsSync(indexPath)) {
+    try {
+      indexed = readFileSync(indexPath, "utf8")
+        .split("\n")
+        .some((line) => line.includes(`"${nativeId}"`));
+    } catch {
+      indexed = false;
+    }
+  }
+  checks.push({ name: "session-index", ok: indexed, detail: indexed ? "entry" : "missing" });
+  return { ok: checks.every((check) => check.ok), checks };
+}
+
+export function verifyWorkbuddy(
+  paths: HostPaths,
+  nativeId: string,
+  expected: { messages: number; file?: string },
+): VerificationResult {
+  const checks: VerificationCheck[] = [];
+  const dbPath = workbuddyDbPath(paths);
+  if (!existsSync(dbPath)) {
+    return { ok: false, checks: [{ name: "sessions", ok: false, detail: dbPath }] };
+  }
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    const row = db.prepare("SELECT title, deleted_at FROM sessions WHERE id=?").get(nativeId) as
+      | { title: string | null; deleted_at: number | null }
+      | undefined;
+    checks.push({
+      name: "session-row",
+      ok: Boolean(row) && !row?.deleted_at,
+      detail: row?.title ?? "missing",
+    });
+  } finally {
+    db.close();
+  }
+
+  let file = expected.file ?? "";
+  if (!file) {
+    try {
+      const root = workbuddyProjectsDir(paths);
+      const projects = readdirSync(root, { withFileTypes: true });
+      for (const project of projects) {
+        if (!project.isDirectory()) continue;
+        const candidate = join(root, project.name, `${nativeId}.jsonl`);
+        if (existsSync(candidate)) {
+          file = candidate;
+          break;
+        }
+      }
+    } catch {
+      file = "";
+    }
+  }
+  let messages = 0;
+  let exists = false;
+  if (file && existsSync(file)) {
+    exists = true;
+    try {
+      messages = readFileSync(file, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as Record<string, unknown>)
+        .filter((record) => {
+          const role = record.role;
+          return record.type === "message" && (role === "user" || role === "assistant");
+        }).length;
+    } catch {
+      messages = 0;
+    }
+  }
+  checks.push({ name: "transcript", ok: exists, detail: file || "missing" });
+  checks.push({
+    name: "message-count",
+    ok: messages === expected.messages,
+    detail: `${messages}/${expected.messages}`,
+  });
+  return { ok: checks.every((check) => check.ok), checks };
+}
+
 export function verifyHost(
   host: HostId,
   paths: HostPaths,
@@ -175,6 +319,18 @@ export function verifyHost(
     return verifyZcode(paths, nativeId, {
       messages: expected.messages,
       parts: expected.parts ?? 0,
+    });
+  }
+  if (host === "codex") {
+    return verifyCodex(paths, nativeId, {
+      messages: expected.messages,
+      file: expected.file,
+    });
+  }
+  if (host === "workbuddy") {
+    return verifyWorkbuddy(paths, nativeId, {
+      messages: expected.messages,
+      file: expected.file,
     });
   }
   return { ok: false, checks: [{ name: "host", ok: false, detail: `${host} is read-only` }] };

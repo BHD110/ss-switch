@@ -22,9 +22,9 @@
 
 ## 测试与本地数据
 
-`pnpm test` 运行 Vitest。将 `*.test.ts` 放在 `packages/` 或 `apps/` 内对应的 `src/` 下，用 `it(...)` 描述预期行为。目前未配置覆盖率门槛。修改导入或写入逻辑时，运行 `pnpm test:e2e` 验证复制、覆盖、撤销和分叉检测。该脚本需要本机 Qoder 和 ZCode 数据库，写入只发生在临时副本上。
+`pnpm test` 运行 Vitest。将 `*.test.ts` 放在 `packages/` 或 `apps/` 内对应的 `src/` 下，用 `it(...)` 描述预期行为。目前未配置覆盖率门槛。修改导入或写入逻辑时，运行 `pnpm test:e2e` 验证复制、覆盖、撤销和分叉检测。该脚本需要本机四个 Agent 的数据库，写入只发生在临时副本上。
 
-Codex 和 WorkBuddy 适配器只读。修改 Qoder 或 ZCode 写入器时，保留备份、写后校验和未知数据库版本的拒写逻辑。测试与日志中避免提交真实会话正文或数据库。
+Codex 和 WorkBuddy 的写入器分别落在对应的 `packages/hosts/src/<host>/` 目录。修改任意写入器时，保留备份、写后校验和未知数据库版本的拒写逻辑。测试与日志中避免提交真实会话正文或数据库。
 
 ## 提交与 Pull Request
 

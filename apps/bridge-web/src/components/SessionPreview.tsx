@@ -8,6 +8,7 @@ interface Props {
   loading: boolean;
   error?: string;
   selectedHost?: HostId;
+  writable?: boolean;
   onSwitch(): void;
   onOpenFolder(path: string): void;
 }
@@ -19,6 +20,7 @@ export function SessionPreview({
   loading,
   error,
   selectedHost,
+  writable = true,
   onSwitch,
   onOpenFolder,
 }: Props) {
@@ -57,17 +59,14 @@ export function SessionPreview({
       <section className="preview-pane">
         <div className="preview-empty">
           <div className="empty-title">选择一个会话</div>
-          <p>
-            左侧列出四个 Agent 的本地会话。选中后可查看对话，并把 Qoder 或 ZCode
-            的会话复制到另一端继续。
-          </p>
+          <p>左侧列出四个 Agent 的本地会话。选中后可查看对话，并复制到任意另一个 Agent 继续。</p>
         </div>
       </section>
     );
   }
 
   const session = detail.session;
-  const canSwitch = session.host === "qoder" || session.host === "zcode";
+  const canSwitch = writable;
   return (
     <section className="preview-pane">
       <header className="preview-head">
@@ -100,9 +99,7 @@ export function SessionPreview({
           </span>
         </div>
         {!canSwitch && (
-          <div className="note">
-            {HOST_LABEL[session.host]} 在本版本只读；可在 Qoder 与 ZCode 之间复制会话。
-          </div>
+          <div className="note">{HOST_LABEL[session.host]} 当前不可写入；请先退出目标应用或检查数据目录。</div>
         )}
         {detail.warnings.length > 0 && (
           <div className="warnings">

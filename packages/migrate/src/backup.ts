@@ -4,6 +4,7 @@ import { basename, join } from "node:path";
 
 import type { HostId } from "@bridge/contracts";
 import type { HostPaths } from "@bridge/hosts";
+import { codexDbPath, codexIndexPath, workbuddyDbPath } from "@bridge/hosts";
 
 export interface BackupFile {
   original: string;
@@ -29,6 +30,14 @@ export function backupTargets(host: HostId, paths: HostPaths, extra: string[] = 
     const db = join(paths.zcodeHome, "cli", "db", "db.sqlite");
     const index = join(paths.zcodeHome, "v2", "tasks-index.sqlite");
     return [db, `${db}-wal`, `${db}-shm`, index, `${index}-wal`, `${index}-shm`, ...extra];
+  }
+  if (host === "codex") {
+    const db = codexDbPath(paths);
+    return [db, `${db}-wal`, `${db}-shm`, codexIndexPath(paths), ...extra];
+  }
+  if (host === "workbuddy") {
+    const db = workbuddyDbPath(paths);
+    return [db, `${db}-wal`, `${db}-shm`, ...extra];
   }
   return [...extra];
 }

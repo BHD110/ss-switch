@@ -46,6 +46,10 @@ export function codexDbPath(paths: HostPaths): string {
   return join(paths.codexHome, "sqlite", "codex.db");
 }
 
+export function codexIndexPath(paths: HostPaths): string {
+  return join(paths.codexHome, "session_index.jsonl");
+}
+
 /** The live ZCode database path, used to decide whether process guards apply. */
 export function zcodeDbPathForGuard(): string {
   return zcodeDbPath(resolvePaths());

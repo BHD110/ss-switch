@@ -69,11 +69,7 @@ export function HostRail({
               <span className="host-count">{num(host.sessionCount)}</span>
               <span className="host-meta" title={host.writeBlockedReason ?? ""}>
                 <span className={host.writeReady ? "write-dot ok" : "write-dot"} />
-                {host.id === "qoder" || host.id === "zcode"
-                  ? host.writeReady
-                    ? "可写入"
-                    : "暂不可写"
-                  : "只读"}
+                {host.capabilities.writable ? (host.writeReady ? "可写入" : "暂不可写") : "只读"}
                 {host.version ? ` · ${host.version}` : ""}
               </span>
               <span className="host-root" title={host.root}>
@@ -95,7 +91,7 @@ export function HostRail({
 
       <div className="rail-foot">
         <div>上次扫描 {scannedAt ? timeAgo(scannedAt) : "—"}</div>
-        <div className="hint">只读展示四个 Agent；Qoder 与 ZCode 之间可复制分支。</div>
+        <div className="hint">只读展示四个 Agent；任意两个 Agent 之间都能复制分支。</div>
       </div>
     </aside>
   );
