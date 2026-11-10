@@ -1,37 +1,76 @@
-# ss switch
+<p align="center">
+  <img src="./ss-switch-readme-banner-v2.png" alt="SS Switch · Session Switch" width="840">
+</p>
 
-本地会话中转站：在一个桌面界面里浏览 Qoder、ZCode、Codex、WorkBuddy 的本地会话，并把任意两个 Agent 之间的会话以“复制分支”的方式互相带到另一端继续。
+# ss switch (Session Switch)
 
-- 只在本机读写，不联网、不上传、不做遥测。
-- 切换 = 复制，不是移动。源会话保持不变；目标端新增一个可继续的会话。
-- 支持“新建副本”和“覆盖已有会话”两种导回方式；覆盖只在目标自上次导入后没有新内容时可用。
-- 四个 Agent 之间都是双向可写；Claude Code / Cursor 不在本版本范围内。
-- 界面支持中文和 English，右上角可随时切换，选择会记住。
+> 跨平台 AI 编程会话（上下文）无缝迁移工具。打破工具壁垒，带着记忆在不同的 Harness 之间自由横跳。
 
-## 能力范围
+---
 
-| Agent     | 浏览 | 写入 | 说明                                                                           |
-| --------- | ---- | ---- | ------------------------------------------------------------------------------ |
-| Qoder CN  | 是   | 是   | JSONL + `main.sqlite`（`chat_sessions` / `chat_session_messages` / 搜索段）    |
-| ZCode     | 是   | 是   | 主库 `db.sqlite` + 桌面索引 `tasks-index.sqlite`                               |
-| Codex     | 是   | 是   | `sessions/**/rollout-*.jsonl` + `session_index.jsonl` + `sqlite/codex.db` 目录 |
-| WorkBuddy | 是   | 是   | `workbuddy.db#sessions` + `projects/<项目>/<会话>.jsonl`                       |
+##  为什么需要 ss switch？
 
-互导支持四个 Agent 的任意组合（12 个方向）。工具调用、思考过程、图片/附件引用会尽量转换；目标端没有对应格式的内容会明确列为“丢弃”，不会静默吞掉。
+作为重度 AI 开发者，你一定遇到过这样的崩溃时刻：
+在工具 A 里辛辛苦苦调教了半天，把项目背景、架构方案和 Bug 细节全部“喂”给模型，正准备冲刺完成时——**Rate Limit** 弹出来了，额度用尽。
+
+如果想换到另一个有额度的工具 B 继续，就必须把长篇大论重新复制粘贴一遍，不仅极其痛苦，还经常丢失上下文心流。
+
+**ss switch** 应运而生。它将你的对话记忆与具体的 AI 编程客户端（Harness）解耦，让你实现零冷启动、无缝续聊。
+
+
+##  核心功能
+
+- **一键迁移：** 在当前工具点击复制，选择目标 Harness，点击开始即可完成上下文注入。
+- **零冷启动：** 新 Harness 完美继承之前的记忆，无需重新输入背景信息，直接接着上一句继续干活。
+- **多平台支持：** 目前已支持主流 AI 编程客户端，更多平台持续接入中。
+
+### 当前支持的 Harness
+- Qoder
+- ZDox
+- ZCode
+- Codex
+- WorkBuddy
+- *(Claude Code 等正在持续接入中)*
+
+---
+
+<table align="center" aria-label="SS Switch 产品界面">
+  <tr>
+    <td><img src="./docs/readme/session-qoder.png" alt="Qoder 会话列表和详情" width="300"></td>
+    <td><img src="./docs/readme/session-codex.png" alt="Codex 会话列表和详情" width="300"></td>
+  </tr>
+  <tr>
+    <td><img src="./docs/readme/copy-session.png" alt="复制分支的目标客户端和写入选项" width="300"></td>
+    <td><img src="./docs/readme/migration-history.png" alt="迁移历史与分叉提示" width="300"></td>
+  </tr>
+</table>
+
+##  核心价值与使用场景
+
+### 1. 突破额度限制，告别中断
+当某个客户端的额度耗尽时，无需等待冷却，也无需被迫额外充值。直接用 `ss switch` 切换到另一个有额度的工具，保证开发心流不中断。
+
+### 2. 极致“薅羊毛”
+各大 AI 编程客户端/Harness 经常推出免费额度或促销活动。通过 `ss switch`，你可以把全网的免费额度串联起来利用，实现零成本白嫖高阶 AI 能力。
+
+### 3. “架构师 + 包工头”的高低搭配工作流
+* **顶层设计阶段：** 先在能力最强、最聪明的模型/Harness 里梳理架构、写技术方案、定好设计图。
+* **批量实现阶段：** 用 `ss switch` 把带上下文的会话一键切到更便宜、量更大的模型/Harness 中，让它照着方案疯狂写代码、搬砖。
+* 既保证了产品质量，又大幅降低了整体使用成本。
+
+---
+
+<details>
+<summary>商业合作请加微信</summary>
+
+<p><img src="./docs/readme/wechat-qr.jpg" alt="商业合作微信二维码" width="280"></p>
+
+</details>
 
 ## 技术架构
 
 ![SS Switch 技术架构图。React 界面经 Preload 和 IPC 调用 Electron 主进程。浏览和迁移共用客户端适配器与 Bridge Store。迁移按计划、备份、写入、校验、提交执行。适配器直接读写四个客户端的本地数据。](./ss-switch-architecture.svg)
 
-## 安全边界
-
-- 写入前用进程检测目标应用是否在运行；运行中默认拒绝写入（新建副本可显式勾选“仍然写入”，覆盖不允许）。
-- 优先按进程判断；进程列表不可用时退回 WAL 修改时间的新鲜度。
-- 写入前自动备份：Qoder 备份 `main.sqlite`（含 `-wal`/`-shm`）和目标 JSONL；ZCode 备份 `db.sqlite` 与 `tasks-index.sqlite`（含 `-wal`/`-shm`）；Codex 备份 `sqlite/codex.db`、`session_index.jsonl` 和目标 rollout；WorkBuddy 备份 `workbuddy.db`（含 `-wal`/`-shm`）和目标会话 JSONL。
-- 写入在一个事务内完成，写后做行数/序列/搜索段/索引行校验；失败自动回滚。
-- 覆盖已有会话前校验内容指纹；目标在导入后有了新消息就只允许“新建副本”。
-- 撤销只删除 ss switch 创建的目标；覆盖模式用导入前备份还原。绝不删除源会话。
-- 日志只记录 id、计数、耗时和路径，不记录会话正文。
 
 ## 快速开始
 
@@ -110,19 +149,6 @@ pnpm probe cleanup   # 删除测试会话，源数据不变
 
 `pnpm probe status` 可查看目标索引里是否已出现这两条会话。
 
-## 已知限制
-
-- Qoder 的桌面列表与 CLI 列表是两套存储；ss switch 同时写 JSONL 与桌面库。桌面不会实时导入 JSONL（已实测），需要写入 DB 并重启 Qoder。
-- 写入 Qoder 时会复用同一目录下真实会话的 `workspace_id` / `execution_target_json` 和最近可用的模型 key；找不到 workspace 时退回 NULL（现有数据允许）。源模型记录在 `extra_json.bridgeSourceModel`。
-- ZCode 的桌面列表按 `tasks.provider` 过滤，并且要求 `session.project_id` 与真实规则一致（`proj_` + ASCII 路径段）；Bridge 现在按真实字段写入 `project_id`、`provider`、`meta_json.provider`，并预先写 `task_group_admissions` / 正数排序，避免会话被桌面归到隐藏分组。
-- ZCode 冷恢复会从工具调用重建读/写状态（`readFileState`、patch）；导入无法提供这些快照，工具调用会以**文本卡片**形式导入（保留名称、输入、输出），不再写成 `tool` part。assistant 消息写入 `tokens`/`cost` 占位，否则恢复会报 `Cannot read properties of undefined (reading 'input')`。
-- 已有导入记录可用 `pnpm repair:zcode` 修复（需先退出 ZCode）：修正 project/provider/metadata、补 tokens、把工具调用转为文本、调整任务排序。
-- Codex 的桌面列表来自 `sqlite/codex.db#local_thread_catalog`；Bridge 同时写 rollout JSONL、`session_index.jsonl` 和目录行。导入的思考记录是普通 `summary` 文本，加密推理无法解密；工具调用写成 `function_call` + `function_call_output`。
-- WorkBuddy 的桌面列表来自 `workbuddy.db#sessions`；Bridge 同时写项目 JSONL。行的 `session_settings` 里带 Bridge 标记，撤销只删除带标记的行。工具结果以内联文本保存，不会写进 `tool-results` 文件夹。
-- 搜索：Qoder 会写 `chat_session_search_segments` 以保持可搜索；ZCode 会写 `searchable_text`；Codex 的 `session_index.jsonl` 只保存标题；WorkBuddy 更复杂的索引不复制。
-- 附件/图片只保留引用或文本说明，不搬运二进制，保真度会标为“适配”。
-- 覆盖是同 ID 替换，风险最高；任一条保护不满足就只允许“新建副本”。
-- 超大会话只做截断与折叠显示；不会为了显示而修改源数据。
 
 ## 目录结构
 
@@ -146,3 +172,7 @@ pnpm build         # 主进程 + 渲染层
 pnpm package:win       # Windows 目录版（release/win-unpacked）
 pnpm package:portable  # 单文件免安装版（release/ss-switch-*.exe）
 ```
+
+## 商业合作请加微信
+
+<img src="./docs/readme/wechat-qr.jpg" alt="商业合作微信二维码" width="280">
