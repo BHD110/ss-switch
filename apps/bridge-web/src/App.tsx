@@ -25,7 +25,6 @@ export function App() {
   const { lang, setLang, t } = useI18n();
   const langRef = useRef(lang);
   langRef.current = lang;
-  const statusLang = useRef(lang);
   const [hosts, setHosts] = useState<HostStatus[]>([]);
   const [sessions, setSessions] = useState<StoredSession[]>([]);
   const [activeHost, setActiveHost] = useState<HostId | "all">("all");
@@ -91,17 +90,6 @@ export function App() {
       .then(setDivergence)
       .catch(() => setDivergence([]));
   }, [ready]);
-
-  useEffect(() => {
-    if (!ready) return;
-    // The first scan already supplies statuses; only refresh after a language switch.
-    if (statusLang.current === lang) return;
-    statusLang.current = lang;
-    bridge()
-      .hosts(lang)
-      .then(setHosts)
-      .catch(() => undefined);
-  }, [lang, ready]);
 
   const filtered = useMemo(() => {
     const needle = text.trim().toLowerCase();
