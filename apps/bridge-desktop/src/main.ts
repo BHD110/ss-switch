@@ -11,6 +11,7 @@ import {
   type ScanReport,
   type SessionQuery,
   type SessionRef,
+  type UiLocale,
 } from "@bridge/contracts";
 import { createAdapters, createWriters, type HostPaths, resolvePaths } from "@bridge/hosts";
 import {
@@ -91,7 +92,11 @@ function mkdirSyncSafe(path: string): void {
   mkdirSync(path, { recursive: true });
 }
 
-async function hostStatuses(ctx: ImportContext): Promise<HostStatus[]> {
+function ui(locale: UiLocale | undefined, zh: string, en: string): string {
+  return locale === "en" ? en : zh;
+}
+
+async function hostStatuses(ctx: ImportContext, locale?: UiLocale): Promise<HostStatus[]> {
   const statuses = await Promise.all(
     (Object.keys(ctx.adapters) as HostId[]).map(async (id) => {
       try {
@@ -120,12 +125,12 @@ async function hostStatuses(ctx: ImportContext): Promise<HostStatus[]> {
       }
     }),
   );
-  const readiness = await writerReadiness(ctx);
+  const readiness = await writerReadiness(ctx, locale);
   for (const status of statuses) {
     const write = readiness[status.id];
     if (!write) {
       status.writeReady = false;
-      status.writeBlockedReason = "Read-only in this version";
+      status.writeBlockedReason = ui(locale, "此版本只读", "Read-only in this version");
     } else {
       status.writeReady = write.ready;
       status.writeBlockedReason = write.reason;
@@ -135,9 +140,9 @@ async function hostStatuses(ctx: ImportContext): Promise<HostStatus[]> {
   return statuses;
 }
 
-async function scanAll(ctx: ImportContext, force: boolean): Promise<ScanReport> {
+async function scanAll(ctx: ImportContext, force: boolean, locale?: UiLocale): Promise<ScanReport> {
   if (!force && Date.now() - scanAt < 10_000) {
-    const hosts = await hostStatuses(ctx);
+    const hosts = await hostStatuses(ctx, locale);
     return { hosts, scannedAt: scanAt, warnings: [] };
   }
   const warnings: string[] = [];
@@ -163,11 +168,12 @@ async function scanAll(ctx: ImportContext, force: boolean): Promise<ScanReport> 
       }
     }),
   );
-  const readiness = await writerReadiness(ctx);
+  const readiness = await writerReadiness(ctx, locale);
   for (const status of hosts) {
     const write = readiness[status.id];
     status.writeReady = Boolean(write?.ready);
-    status.writeBlockedReason = write?.reason ?? (write ? undefined : "No writer for this host");
+    status.writeBlockedReason =
+      write?.reason ?? (write ? undefined : ui(locale, "此版本只读", "Read-only in this version"));
     ctx.store.upsertHost(status);
   }
   scanAt = Date.now();
@@ -203,11 +209,13 @@ function assertSessionRef(ref: unknown): SessionRef {
 }
 
 function registerIpc(): void {
-  ipcMain.handle(IPC.scan, async (_event, force?: boolean) =>
-    scanAll(bridgeContext(), Boolean(force)),
+  ipcMain.handle(IPC.scan, async (_event, force?: boolean, locale?: UiLocale) =>
+    scanAll(bridgeContext(), Boolean(force), locale),
   );
 
-  ipcMain.handle(IPC.hosts, async () => hostStatuses(bridgeContext()));
+  ipcMain.handle(IPC.hosts, async (_event, locale?: UiLocale) =>
+    hostStatuses(bridgeContext(), locale),
+  );
 
   ipcMain.handle(IPC.sessions, async (_event, query?: SessionQuery) => {
     const ctx = bridgeContext();
@@ -249,8 +257,10 @@ function registerIpc(): void {
     return { ok: true };
   });
 
-  ipcMain.handle(IPC.openFolder, async (_event, rawPath: string) => {
-    if (typeof rawPath !== "string" || !rawPath) return { ok: false, error: "Empty path" };
+  ipcMain.handle(IPC.openFolder, async (_event, rawPath: string, locale?: UiLocale) => {
+    if (typeof rawPath !== "string" || !rawPath) {
+      return { ok: false, error: ui(locale, "路径为空", "Empty path") };
+    }
     const target = resolve(rawPath);
     const allowed = [
       paths.qoderConfigDir,
@@ -260,23 +270,60 @@ function registerIpc(): void {
       app.getPath("userData"),
     ].map((root) => resolve(root));
     if (!allowed.some((root) => target === root || target.startsWith(`${root}${sep()}`))) {
-      return { ok: false, error: "Path is outside the configured host roots" };
+      return {
+        ok: false,
+        error: ui(locale, "路径不在允许的目录范围内", "Path is outside the configured host roots"),
+      };
     }
-    if (!existsSync(target)) return { ok: false, error: "Folder no longer exists" };
+    if (!existsSync(target)) {
+      return { ok: false, error: ui(locale, "目录已不存在", "Folder no longer exists") };
+    }
     const error = await shell.openPath(target);
     return error ? { ok: false, error } : { ok: true };
   });
 
-  ipcMain.handle(IPC.openSessionFolder, async (_event, rawRef: unknown) => {
+  ipcMain.handle(IPC.openSessionFolder, async (_event, rawRef: unknown, locale?: UiLocale) => {
     const { host, nativeId } = assertSessionRef(rawRef);
     const cwd = bridgeContext().store.getSession(host, nativeId)?.cwd;
-    if (!cwd) return { ok: false, error: "该会话没有记录工作目录" };
-    if (!isAbsolute(cwd)) return { ok: false, error: "该会话的工作目录不是绝对路径" };
+    if (!cwd) {
+      return {
+        ok: false,
+        error: ui(locale, "该会话没有记录工作目录", "No recorded working folder"),
+      };
+    }
+    if (!isAbsolute(cwd)) {
+      return {
+        ok: false,
+        error: ui(
+          locale,
+          "该会话的工作目录不是绝对路径",
+          "The working folder is not an absolute path",
+        ),
+      };
+    }
     const target = resolve(cwd);
     const entry = await stat(target).catch(() => undefined);
-    if (!entry?.isDirectory()) return { ok: false, error: "工作目录不存在或无法访问" };
+    if (!entry?.isDirectory()) {
+      return {
+        ok: false,
+        error: ui(
+          locale,
+          "工作目录不存在或无法访问",
+          "The working folder is missing or unreadable",
+        ),
+      };
+    }
     const error = await shell.openPath(target);
-    return error ? { ok: false, error: `无法打开工作目录：${error}` } : { ok: true };
+    return error
+      ? {
+          ok: false,
+          error: ui(
+            locale,
+            `无法打开工作目录：${error}`,
+            `Could not open the working folder: ${error}`,
+          ),
+        }
+      : { ok: true };
   });
 
   ipcMain.handle(IPC.divergence, async () => detectDivergence(bridgeContext()));

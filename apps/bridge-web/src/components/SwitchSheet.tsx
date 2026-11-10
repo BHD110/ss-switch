@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { bridge } from "../api";
 import { fidelityLabel, HOST_LABEL, HOST_ORDER, num, shortPath } from "../format";
+import { type MessageKey, useI18n } from "../i18n";
 
 interface Props {
   open: boolean;
@@ -29,20 +30,21 @@ interface Candidate {
   label: string;
 }
 
-const PART_LABEL: Record<PartKind, string> = {
-  text: "文字",
-  reasoning: "思考过程",
-  tool_call: "工具调用",
-  tool_result: "工具结果",
-  attachment: "附件",
-  image: "图片",
-  system: "系统消息",
-  step: "步骤记录",
-  timeline: "时间线",
-  file: "文件",
+const PART_KEY: Record<PartKind, MessageKey> = {
+  text: "partText",
+  reasoning: "partReasoning",
+  tool_call: "partToolCall",
+  tool_result: "partToolResult",
+  attachment: "partAttachment",
+  image: "partImage",
+  system: "partSystem",
+  step: "partStep",
+  timeline: "partTimeline",
+  file: "partFile",
 };
 
 export function SwitchSheet({ open, source, hosts, sessions, history, onClose, onDone }: Props) {
+  const { lang, t } = useI18n();
   const [targetHost, setTargetHost] = useState<HostId>("zcode");
   const [mode, setMode] = useState<"new_copy" | "overwrite">("new_copy");
   const [targetNativeId, setTargetNativeId] = useState<string>("");
@@ -90,7 +92,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
         found.set(nativeId, {
           host: targetHost,
           nativeId,
-          label: `${title ?? "目标会话"} · ${nativeId.slice(0, 16)}`,
+          label: `${title ?? t("candidateTarget")} · ${nativeId.slice(0, 16)}`,
         });
       } else if (dst === sourceRef && src.startsWith(`${targetHost}:`)) {
         const nativeId = src.slice(targetHost.length + 1);
@@ -100,14 +102,12 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
         found.set(nativeId, {
           host: targetHost,
           nativeId,
-          label: `${title ?? "原始会话"} · ${nativeId.slice(0, 16)}（原会话）`,
+          label: `${title ?? t("candidateOriginal")} · ${nativeId.slice(0, 16)}${t("candidateOriginalSuffix")}`,
         });
       }
     }
     return [...found.values()];
-  }, [history, source?.id, sourceRef, targetHost, sessions, source]);
-
-  const targetStatus = hosts.find((host) => host.id === targetHost);
+  }, [history, source?.id, sourceRef, targetHost, sessions, source, t]);
 
   useEffect(() => {
     if (!open || !source) return;
@@ -125,6 +125,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
       source: { host: source.host, nativeId: source.nativeId },
       targetHost,
       mode: mode === "overwrite" ? "overwrite" : "new_copy",
+      locale: lang,
       ...(mode === "overwrite" && targetNativeId ? { targetNativeId } : {}),
       ...(allowRunning && mode === "new_copy" ? { allowRunningWrite: true } : {}),
     };
@@ -143,7 +144,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
       active = false;
       clearTimeout(timer);
     };
-  }, [open, source, targetHost, mode, targetNativeId, allowRunning, checkAttempt, result]);
+  }, [open, source, targetHost, mode, targetNativeId, allowRunning, checkAttempt, result, lang]);
 
   if (!open || !source) return null;
 
@@ -151,6 +152,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
     source: { host: source.host, nativeId: source.nativeId },
     targetHost,
     mode: mode === "overwrite" ? "overwrite" : "new_copy",
+    locale: lang,
     ...(mode === "overwrite" && targetNativeId ? { targetNativeId } : {}),
     ...(allowRunning && mode === "new_copy" ? { allowRunningWrite: true } : {}),
     title: source.title,
@@ -159,9 +161,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
 
   // The plan re-checks the target at request time, so a stale host status must
   // not keep the confirm button disabled after the app has been closed.
-  const targetBusy = plan
-    ? plan.requiresRestart || plan.blockers.some((item) => item.includes("正在运行"))
-    : targetStatus?.writeBlockedReason?.includes("正在运行");
+  const targetBusy = plan?.targetRunning ?? false;
 
   const blocked =
     !plan || busy || plan.blockers.length > 0 || (mode === "overwrite" && !plan.overwriteAllowed);
@@ -193,7 +193,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
     setBusy(true);
     try {
       const outcome = await bridge().undo(result.txId);
-      if (!outcome.ok) setError(outcome.error ?? "撤销失败");
+      if (!outcome.ok) setError(outcome.error ?? t("undoFailed"));
       else {
         setResult(undefined);
         onDone();
@@ -208,14 +208,14 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
       <div className="sheet" onClick={(event) => event.stopPropagation()}>
         <header className="sheet-head">
           <div>
-            <div className="sheet-kicker">复制会话</div>
-            <h2>{source.title || "未命名会话"}</h2>
+            <div className="sheet-kicker">{t("copyKicker")}</div>
+            <h2>{source.title || t("untitled")}</h2>
             <div className="sheet-sub">
-              {HOST_LABEL[source.host]} · {shortPath(source.cwd, 2)}
+              {HOST_LABEL[source.host]} · {shortPath(source.cwd, 2, t)}
             </div>
           </div>
-          <button type="button" className="icon-button" onClick={onClose} title="关闭">
-            关闭
+          <button type="button" className="icon-button" onClick={onClose} title={t("close")}>
+            {t("close")}
           </button>
         </header>
 
@@ -223,30 +223,33 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
           <div className="sheet-body">
             <div className={`result-box ${result.ok ? "ok" : "bad"}`}>
               <div className="result-title">
-                {result.ok ? `已复制到 ${HOST_LABEL[result.targetHost]}` : "复制失败"}
+                {result.ok
+                  ? t("copiedTo", { host: HOST_LABEL[result.targetHost] })
+                  : t("copyFailed")}
               </div>
               {result.ok ? (
                 <>
                   <div className="kv">
-                    <span>会话编号</span>
+                    <span>{t("sessionId")}</span>
                     <span className="mono">{result.targetNativeId}</span>
                   </div>
                   <div className="kv">
-                    <span>已复制</span>
+                    <span>{t("copiedLabel")}</span>
                     <span>
-                      {num(result.turns)} 轮 · {num(result.parts)} 条 ·{" "}
-                      {fidelityLabel(result.fidelity)}
+                      {num(result.turns, lang)} {t("turnUnit", { n: result.turns })} ·{" "}
+                      {num(result.parts, lang)} {t("partUnit", { n: result.parts })} ·{" "}
+                      {fidelityLabel(result.fidelity, t)}
                     </span>
                   </div>
                   {result.backupDir && (
                     <div className="kv">
-                      <span>备份位置</span>
+                      <span>{t("backupLocation")}</span>
                       <span className="mono truncate">{result.backupDir}</span>
                     </div>
                   )}
                   {result.openCommand && (
                     <div className="kv">
-                      <span>打开命令</span>
+                      <span>{t("openCommand")}</span>
                       <span className="mono">{result.openCommand}</span>
                     </div>
                   )}
@@ -267,23 +270,23 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
                 <>
                   {result.openCommand && (
                     <button type="button" className="primary" onClick={copyCommand}>
-                      {copied ? "命令已复制" : "复制打开命令"}
+                      {copied ? t("cmdCopied") : t("copyOpenCommand")}
                     </button>
                   )}
                   <button type="button" className="ghost" onClick={undo} disabled={busy}>
-                    撤销这次复制
+                    {t("undoThisCopy")}
                   </button>
                 </>
               )}
               <button type="button" className="ghost" onClick={onClose}>
-                完成
+                {t("done")}
               </button>
             </div>
           </div>
         ) : (
           <div className="sheet-body">
             <div className="field">
-              <div className="field-label">复制到哪个应用？</div>
+              <div className="field-label">{t("targetApp")}</div>
               <div className="segmented">
                 {writableHosts.map((host) => (
                   <button
@@ -301,7 +304,11 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
                   </button>
                 ))}
               </div>
-              {targetBusy && <div className="field-hint">{HOST_LABEL[targetHost]} 正在运行。</div>}
+              {targetBusy && (
+                <div className="field-hint">
+                  {t("runningHint", { host: HOST_LABEL[targetHost] })}
+                </div>
+              )}
               {targetBusy && mode === "new_copy" && (
                 <label className="radio running-write">
                   <input
@@ -310,18 +317,15 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
                     onChange={(event) => setAllowRunning(event.target.checked)}
                   />
                   <span>
-                    <strong>继续复制，稍后重启应用（实验功能）</strong>
-                    <em>
-                      重启 {HOST_LABEL[targetHost]}{" "}
-                      后就能查看新会话。如果找不到，请退出应用后再复制一次。
-                    </em>
+                    <strong>{t("allowRunningStrong")}</strong>
+                    <em>{t("allowRunningBody", { host: HOST_LABEL[targetHost] })}</em>
                   </span>
                 </label>
               )}
             </div>
 
             <div className="field">
-              <div className="field-label">怎么复制？</div>
+              <div className="field-label">{t("howCopy")}</div>
               <label className="radio">
                 <input
                   type="radio"
@@ -329,8 +333,8 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
                   onChange={() => setMode("new_copy")}
                 />
                 <span>
-                  <strong>新建会话</strong>
-                  <em>在 {HOST_LABEL[targetHost]} 新建一份，保留原会话。</em>
+                  <strong>{t("newCopyStrong")}</strong>
+                  <em>{t("newCopyBody", { host: HOST_LABEL[targetHost] })}</em>
                 </span>
               </label>
               <label className="radio">
@@ -341,11 +345,11 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
                   disabled={candidates.length === 0}
                 />
                 <span>
-                  <strong>覆盖已有会话</strong>
+                  <strong>{t("overwriteStrong")}</strong>
                   <em>
                     {candidates.length
-                      ? "只能覆盖上次复制后没有改动的会话。"
-                      : "没有可覆盖的会话，请选择「新建会话」。"}
+                      ? t("overwriteBodyAvailable")
+                      : t("overwriteBodyUnavailable")}
                   </em>
                 </span>
               </label>
@@ -355,7 +359,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
                   value={targetNativeId}
                   onChange={(event) => setTargetNativeId(event.target.value)}
                 >
-                  <option value="">请选择要覆盖的会话</option>
+                  <option value="">{t("chooseOverwrite")}</option>
                   {candidates.map((candidate) => (
                     <option key={candidate.nativeId} value={candidate.nativeId}>
                       {candidate.label}
@@ -369,31 +373,36 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
             </div>
 
             <div className="field">
-              <div className="field-label">复制前确认</div>
+              <div className="field-label">{t("planTitle")}</div>
               {plan ? (
                 <div className="plan">
                   <div className="plan-row">
-                    <span>原会话</span>
+                    <span>{t("originalLabel")}</span>
                     <span>
-                      {num(plan.turns)} 轮 · {num(plan.parts)} 条 · {num(plan.toolCalls)} 次工具调用
+                      {num(plan.turns, lang)} {t("turnUnit", { n: plan.turns })} ·{" "}
+                      {num(plan.parts, lang)} {t("partUnit", { n: plan.parts })} ·{" "}
+                      {num(plan.toolCalls, lang)} {t("callUnit", { n: plan.toolCalls })}
                     </span>
                   </div>
                   <div className="plan-row">
-                    <span>复制效果</span>
+                    <span>{t("copyResultLabel")}</span>
                     <span className={`fidelity ${plan.fidelity}`}>
-                      {fidelityLabel(plan.fidelity)}
+                      {fidelityLabel(plan.fidelity, t)}
                     </span>
                   </div>
                   <div className="plan-row">
-                    <span>备份</span>
+                    <span>{t("backupLabel")}</span>
                     <span>{plan.backupNote}</span>
                   </div>
                   {plan.dropped.length > 0 && (
                     <div className="plan-dropped">
-                      <span className="hint">这些内容不会复制</span>
+                      <span className="hint">{t("droppedHint")}</span>
                       {plan.dropped.map((item) => (
                         <span key={item.kind} className="badge drop">
-                          {PART_LABEL[item.kind as PartKind] ?? "其他内容"} × {item.count}
+                          {PART_KEY[item.kind as PartKind]
+                            ? t(PART_KEY[item.kind as PartKind])
+                            : t("partOther")}{" "}
+                          × {item.count}
                         </span>
                       ))}
                     </div>
@@ -415,20 +424,26 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
                 </div>
               ) : (
                 !error && (
-                  <div className="field-hint">正在检查能否复制到 {HOST_LABEL[targetHost]}…</div>
+                  <div className="field-hint">
+                    {t("checking", { host: HOST_LABEL[targetHost] })}
+                  </div>
                 )
               )}
             </div>
 
             {error && (
               <div className="error-box" title={error}>
-                {plan ? "复制时出了点问题，请重试。" : "暂时无法检查能否复制，请重新检查。"}
+                {plan ? t("errorWithPlan") : t("errorNoPlan")}
               </div>
             )}
 
             <div className="sheet-actions">
               <button type="button" className="primary" onClick={confirm} disabled={blocked}>
-                {busy ? "正在复制…" : mode === "overwrite" ? "确认覆盖" : "确认复制"}
+                {busy
+                  ? t("copying")
+                  : mode === "overwrite"
+                    ? t("confirmOverwrite")
+                    : t("confirmCopy")}
               </button>
               {(error || (targetBusy && Boolean(plan?.blockers.length))) && (
                 <button
@@ -437,14 +452,14 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
                   onClick={() => setCheckAttempt((n) => n + 1)}
                   disabled={busy}
                 >
-                  重新检查
+                  {t("recheck")}
                 </button>
               )}
               <button type="button" className="ghost" onClick={onClose} disabled={busy}>
-                取消
+                {t("cancel")}
               </button>
             </div>
-            <div className="hint">复制完成后，打开 {HOST_LABEL[targetHost]} 查看会话。</div>
+            <div className="hint">{t("afterCopyHint", { host: HOST_LABEL[targetHost] })}</div>
           </div>
         )}
       </div>

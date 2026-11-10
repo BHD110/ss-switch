@@ -7,6 +7,9 @@
 
 export type HostId = "qoder" | "codex" | "zcode" | "workbuddy";
 
+/** Interface language. Backend copy follows this so both halves agree. */
+export type UiLocale = "zh" | "en";
+
 export const HOST_IDS: readonly HostId[] = ["qoder", "codex", "zcode", "workbuddy"];
 
 export type Fidelity = "high" | "adapted" | "view_only";
@@ -150,6 +153,8 @@ export interface ImportPlanRequest {
   cwd?: string;
   /** Experimental: write a new copy while the target app is still running. */
   allowRunningWrite?: boolean;
+  /** Language for generated copy, warnings and blockers. Defaults to Chinese. */
+  locale?: UiLocale;
 }
 
 export interface ImportPlan {
@@ -169,6 +174,8 @@ export interface ImportPlan {
   overwriteReason?: string;
   /** True when the write happened/will happen against a running target. */
   requiresRestart: boolean;
+  /** True when the target app was running while the plan was made. */
+  targetRunning: boolean;
   backupNote: string;
 }
 
@@ -242,8 +249,8 @@ export type IpcChannel = (typeof IPC)[keyof typeof IPC];
 
 /** The single object the preload script exposes as `window.bridge`. */
 export interface BridgeApi {
-  scan(force?: boolean): Promise<ScanReport>;
-  hosts(): Promise<HostStatus[]>;
+  scan(force?: boolean, locale?: UiLocale): Promise<ScanReport>;
+  hosts(locale?: UiLocale): Promise<HostStatus[]>;
   sessions(query?: SessionQuery): Promise<StoredSession[]>;
   sessionDetail(ref: SessionRef): Promise<SessionDetail>;
   planImport(request: ImportPlanRequest): Promise<ImportPlan>;
@@ -251,8 +258,8 @@ export interface BridgeApi {
   history(): Promise<TxSummary[]>;
   undo(txId: string): Promise<UndoResult>;
   openTarget(result: ImportResult): Promise<{ ok: boolean; error?: string }>;
-  openFolder(path: string): Promise<{ ok: boolean; error?: string }>;
-  openSessionFolder(ref: SessionRef): Promise<{ ok: boolean; error?: string }>;
+  openFolder(path: string, locale?: UiLocale): Promise<{ ok: boolean; error?: string }>;
+  openSessionFolder(ref: SessionRef, locale?: UiLocale): Promise<{ ok: boolean; error?: string }>;
   divergence(): Promise<DivergenceInfo[]>;
   appInfo(): Promise<{ version: string; userData: string; home: string }>;
 }

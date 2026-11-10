@@ -1,7 +1,15 @@
-import type { HostId, SessionDetail, SessionRef, StoredPart, StoredTurn } from "@bridge/contracts";
+import type {
+  HostId,
+  PartKind,
+  SessionDetail,
+  SessionRef,
+  StoredPart,
+  StoredTurn,
+} from "@bridge/contracts";
 import { useMemo, useState } from "react";
 
 import { formatTime, HOST_LABEL, num, shortPath } from "../format";
+import { type MessageKey, type Translate, useI18n } from "../i18n";
 
 interface Props {
   detail?: SessionDetail;
@@ -15,6 +23,19 @@ interface Props {
 
 const FIRST_PAGE = 40;
 
+const PART_KEY: Record<PartKind, MessageKey> = {
+  text: "partText",
+  reasoning: "partReasoning",
+  tool_call: "partToolCall",
+  tool_result: "partToolResult",
+  attachment: "partAttachment",
+  image: "partImage",
+  system: "partSystem",
+  step: "partStep",
+  timeline: "partTimeline",
+  file: "partFile",
+};
+
 export function SessionPreview({
   detail,
   loading,
@@ -24,6 +45,7 @@ export function SessionPreview({
   onSwitch,
   onOpenFolder,
 }: Props) {
+  const { lang, t } = useI18n();
   const [visible, setVisible] = useState(FIRST_PAGE);
   const turns = useMemo(
     () => (detail ? [...detail.turns].sort((a, b) => a.ord - b.ord) : []),
@@ -43,7 +65,7 @@ export function SessionPreview({
   if (loading && !detail) {
     return (
       <section className="preview-pane">
-        <div className="preview-empty">正在读取会话…</div>
+        <div className="preview-empty">{t("loadingSession")}</div>
       </section>
     );
   }
@@ -58,8 +80,8 @@ export function SessionPreview({
     return (
       <section className="preview-pane">
         <div className="preview-empty">
-          <div className="empty-title">选择一个会话</div>
-          <p>左侧列出四个 Agent 的本地会话。选中后可查看对话，并复制到任意另一个 Agent 继续。</p>
+          <div className="empty-title">{t("pickSession")}</div>
+          <p>{t("pickSessionBody")}</p>
         </div>
       </section>
     );
@@ -74,36 +96,35 @@ export function SessionPreview({
           <span className="host-chip" data-host={session.host}>
             {HOST_LABEL[session.host]}
           </span>
-          <h2>{session.title || "未命名会话"}</h2>
+          <h2>{session.title || t("untitled")}</h2>
         </div>
         <div className="preview-meta">
           <span className="mono" title={session.cwd}>
-            {shortPath(session.cwd, 3)}
+            {shortPath(session.cwd, 3, t)}
           </span>
-          <span>更新于 {formatTime(session.updatedAt)}</span>
+          <span>{t("updatedAt", { time: formatTime(session.updatedAt) })}</span>
           <span>
-            {num(turns.length)} 轮 · {num(detail.parts.length)} 条内容
+            {num(turns.length, lang)} {t("turnUnit", { n: turns.length })} ·{" "}
+            {num(detail.parts.length, lang)} {t("partContentUnit", { n: detail.parts.length })}
           </span>
-          {!session.desktopVisible && <span className="badge cli">仅 CLI 可见</span>}
+          {!session.desktopVisible && <span className="badge cli">{t("cliOnly")}</span>}
         </div>
         <div className="preview-actions">
           <button type="button" className="primary" onClick={onSwitch} disabled={!canSwitch}>
-            复制到…
+            {t("copyTo")}
           </button>
           <button
             type="button"
             className="ghost"
             disabled={!session.cwd}
-            title={session.cwd ? undefined : "该会话没有记录工作目录"}
+            title={session.cwd ? undefined : t("noCwdTitle")}
             onClick={() => onOpenFolder({ host: session.host, nativeId: session.nativeId })}
           >
-            打开工作目录
+            {t("openWorkdir")}
           </button>
         </div>
         {!canSwitch && (
-          <div className="note">
-            {HOST_LABEL[session.host]} 当前不可写入；请先退出目标应用或检查数据目录。
-          </div>
+          <div className="note">{t("notWritableNote", { host: HOST_LABEL[session.host] })}</div>
         )}
         {detail.warnings.length > 0 && (
           <div className="warnings">
@@ -124,10 +145,10 @@ export function SessionPreview({
             className="load-more"
             onClick={() => setVisible((value) => value + 60)}
           >
-            继续加载 · 还有 {turns.length - visible} 轮
+            {t("loadMore", { n: turns.length - visible })}
           </button>
         )}
-        {turns.length === 0 && <div className="preview-empty">这个会话没有可读的消息。</div>}
+        {turns.length === 0 && <div className="preview-empty">{t("noMessages")}</div>}
       </div>
       {selectedHost && <span className="hidden">{selectedHost}</span>}
     </section>
@@ -135,6 +156,7 @@ export function SessionPreview({
 }
 
 function TurnView({ turn, parts }: { turn: StoredTurn; parts: StoredPart[] }) {
+  const { t } = useI18n();
   return (
     <article className="turn">
       <div className="turn-head">
@@ -143,10 +165,10 @@ function TurnView({ turn, parts }: { turn: StoredTurn; parts: StoredPart[] }) {
         {turn.outcome && (
           <span className="turn-outcome">
             {turn.outcome === "completed"
-              ? "完成"
+              ? t("outcomeCompleted")
               : turn.outcome === "tool-calls"
-                ? "工具调用"
-                : "失败"}
+                ? t("outcomeToolCalls")
+                : t("outcomeFailed")}
           </span>
         )}
       </div>
@@ -162,19 +184,24 @@ function TurnView({ turn, parts }: { turn: StoredTurn; parts: StoredPart[] }) {
 }
 
 function PartView({ part }: { part: StoredPart }) {
+  const { t } = useI18n();
   const payload = (part.payload ?? {}) as Record<string, unknown>;
   switch (part.kind) {
     case "text":
       return (
         <div className={`part text ${part.role}`}>
-          <div className="part-role">{part.role === "user" ? "你" : "助手"}</div>
+          <div className="part-role">
+            {part.role === "user" ? t("roleUser") : t("roleAssistant")}
+          </div>
           <div className="part-text">{part.text}</div>
         </div>
       );
     case "reasoning":
       return (
         <details className="part details reasoning">
-          <summary>思考过程 · {part.text ? `${part.text.length} 字` : "无文本"}</summary>
+          <summary>
+            {part.text ? t("reasoningSummary", { n: part.text.length }) : t("reasoningEmpty")}
+          </summary>
           <pre className="pre">{part.text ?? ""}</pre>
         </details>
       );
@@ -186,16 +213,16 @@ function PartView({ part }: { part: StoredPart }) {
           <div className="tool-head">
             <span className="tool-dot" />
             <span className="tool-name">{part.toolName ?? "tool"}</span>
-            <span className="tool-state">{toolStateLabel(part.toolState)}</span>
+            <span className="tool-state">{toolStateLabel(part.toolState, t)}</span>
           </div>
           <details>
-            <summary>输入</summary>
-            <pre className="pre">{pretty(input)}</pre>
+            <summary>{t("inputLabel")}</summary>
+            <pre className="pre">{pretty(input, t)}</pre>
           </details>
           {output !== undefined && String(output).length > 0 && (
             <details>
-              <summary>输出 · {String(output).length} 字</summary>
-              <pre className="pre">{clip(String(output))}</pre>
+              <summary>{t("outputSummary", { n: String(output).length })}</summary>
+              <pre className="pre">{clip(String(output), t)}</pre>
             </details>
           )}
         </div>
@@ -204,8 +231,8 @@ function PartView({ part }: { part: StoredPart }) {
     case "tool_result":
       return (
         <details className="part details small">
-          <summary>工具结果</summary>
-          <pre className="pre">{clip(part.text ?? "")}</pre>
+          <summary>{t("toolResult")}</summary>
+          <pre className="pre">{clip(part.text ?? "", t)}</pre>
         </details>
       );
     case "attachment":
@@ -213,7 +240,7 @@ function PartView({ part }: { part: StoredPart }) {
     case "file":
       return (
         <div className="part chip-row">
-          <span className="badge">{part.kind}</span>
+          <span className="badge">{t(PART_KEY[part.kind])}</span>
           <span className="mono truncate">
             {part.text ?? String(payload.path ?? payload.filename ?? "")}
           </span>
@@ -222,36 +249,38 @@ function PartView({ part }: { part: StoredPart }) {
     default:
       return (
         <details className="part details small">
-          <summary>{part.kind}</summary>
-          <pre className="pre">{pretty(part.payload)}</pre>
+          <summary>{t("partOther")}</summary>
+          <pre className="pre">{pretty(part.payload, t)}</pre>
         </details>
       );
   }
 }
 
-function toolStateLabel(state?: string): string {
+function toolStateLabel(state: string | undefined, t: Translate): string {
   switch (state) {
     case "error":
-      return "出错";
+      return t("toolStateError");
     case "running":
-      return "运行中";
+      return t("toolStateRunning");
     case "pending":
-      return "等待中";
+      return t("toolStatePending");
     default:
-      return "完成";
+      return t("toolStateDone");
   }
 }
 
-function pretty(value: unknown): string {
-  if (typeof value === "string") return clip(value);
+function pretty(value: unknown, t: Translate): string {
+  if (typeof value === "string") return clip(value, t);
   try {
-    return clip(JSON.stringify(value, null, 2));
+    return clip(JSON.stringify(value, null, 2), t);
   } catch {
     return String(value);
   }
 }
 
-function clip(value: string): string {
+function clip(value: string, t: Translate): string {
   const MAX = 12_000;
-  return value.length > MAX ? `${value.slice(0, MAX)}\n…（已截断，共 ${value.length} 字）` : value;
+  return value.length > MAX
+    ? `${value.slice(0, MAX)}\n${t("truncated", { n: value.length })}`
+    : value;
 }

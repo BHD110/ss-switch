@@ -224,9 +224,22 @@ describe("planImport", () => {
     });
     expect(busy.blockers).toEqual(["Fake 正在运行。请先退出 Fake，再重新检查。"]);
     expect(busy.backupNote).toBe("复制前会自动备份相关数据。");
+    expect(busy.targetRunning).toBe(true);
     expect((await writerReadiness(ctx)).zcode).toEqual({
       ready: false,
       reason: "Fake 正在运行。",
+    });
+    const english = await planImport(ctx, {
+      source: { host: "qoder", nativeId: "src" },
+      targetHost: "zcode",
+      mode: "new_copy",
+      locale: "en",
+    });
+    expect(english.blockers).toEqual(["Fake is running. Quit Fake, then check again."]);
+    expect(english.backupNote).toBe("Related data is backed up automatically before copying.");
+    expect((await writerReadiness(ctx, "en")).zcode).toEqual({
+      ready: false,
+      reason: "Fake is running.",
     });
   });
 

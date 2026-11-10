@@ -12,6 +12,7 @@ import type {
   SessionDetail,
   SessionRef,
   StoredPart,
+  UiLocale,
   UndoResult,
 } from "@bridge/contracts";
 import type { HostAdapter, HostPaths, HostWriter } from "@bridge/hosts";
@@ -19,6 +20,7 @@ import type { BridgeStore } from "@bridge/store";
 import { verifyHost } from "@bridge/verify";
 
 import { backupTargets, createBackup, restoreBackup } from "./backup";
+import { planMessages } from "./messages";
 
 export interface ImportContext {
   paths: HostPaths;
@@ -36,6 +38,7 @@ export async function planImport(
   const blockers: string[] = [];
   const targetHost = request.targetHost;
   const targetName = ctx.adapters[targetHost].displayName;
+  const copy = planMessages(request.locale);
   const writer = ctx.writers[targetHost];
   const sourceAdapter = ctx.adapters[request.source.host];
   const detail = await readSource(sourceAdapter, request.source);
@@ -45,23 +48,23 @@ export async function planImport(
     (part) => part.kind === "tool_call" && Boolean(part.toolCallId),
   ).length;
 
-  if (!writer) blockers.push(`当前版本还不能复制到 ${targetName}。`);
-  if (request.source.host === targetHost) blockers.push("请选择另一个应用。");
+  if (!writer) blockers.push(copy.cannotCopy(targetName));
+  if (request.source.host === targetHost) blockers.push(copy.chooseOtherApp);
 
   let overwriteAllowed = request.mode === "new_copy";
   let overwriteReason: string | undefined;
   if (request.mode === "overwrite") {
     if (!request.targetNativeId) {
       overwriteAllowed = false;
-      overwriteReason = "请选择要覆盖的会话。";
+      overwriteReason = copy.chooseOverwrite;
     } else if (!writer) {
       overwriteAllowed = false;
-      overwriteReason = `当前版本还不能覆盖 ${targetName} 的会话。`;
+      overwriteReason = copy.cannotOverwrite(targetName);
     } else {
       const touching = ctx.store.lineageTouching(targetHost, request.targetNativeId);
       if (!touching) {
         overwriteAllowed = false;
-        overwriteReason = "只能覆盖与这次会话有过复制记录的会话。";
+        overwriteReason = copy.notCopiedBefore;
       } else {
         const expected =
           touching.side === "dst" ? touching.lineage.dstFpAtImport : touching.lineage.srcFpAtImport;
@@ -70,10 +73,10 @@ export async function planImport(
         const current = await ctx.adapters[targetHost].deepFingerprint(request.targetNativeId);
         if (!current) {
           overwriteAllowed = false;
-          overwriteReason = "找不到要覆盖的会话，请重新选择。";
+          overwriteReason = copy.overwriteGone;
         } else if (current !== expected) {
           overwriteAllowed = false;
-          overwriteReason = "要覆盖的会话在上次复制后有改动，请选择「新建会话」。";
+          overwriteReason = copy.overwriteChanged;
         } else {
           overwriteAllowed = true;
         }
@@ -83,6 +86,7 @@ export async function planImport(
 
   const warnings = [...detail.warnings];
   let requiresRestart = false;
+  let targetRunning = false;
   if (writer) {
     try {
       await writer.assertSchema();
@@ -90,13 +94,12 @@ export async function planImport(
       blockers.push(error instanceof Error ? error.message : String(error));
     }
     if (await writer.isBusy()) {
+      targetRunning = true;
       if (request.allowRunningWrite === true && request.mode === "new_copy") {
         requiresRestart = true;
-        warnings.push(
-          `${targetName} 正在运行。复制后请重启 ${targetName}，再查看新会话。如果找不到，请关闭应用后再复制一次。`,
-        );
+        warnings.push(copy.runningRestart(targetName));
       } else {
-        blockers.push(`${targetName} 正在运行。请先退出 ${targetName}，再重新检查。`);
+        blockers.push(copy.runningBlocked(targetName));
       }
     }
   }
@@ -115,7 +118,8 @@ export async function planImport(
     overwriteAllowed,
     overwriteReason,
     requiresRestart,
-    backupNote: "复制前会自动备份相关数据。",
+    targetRunning,
+    backupNote: copy.backupNote,
     writeBlockedReason: blockers[0],
   };
 }
@@ -438,7 +442,9 @@ async function refreshIndex(ctx: ImportContext, host: HostId): Promise<void> {
 /** Status for both writers, used by the UI to disable confirm buttons. */
 export async function writerReadiness(
   ctx: ImportContext,
+  locale?: UiLocale,
 ): Promise<Partial<Record<HostId, { ready: boolean; reason?: string }>>> {
+  const copy = planMessages(locale);
   const result: Partial<Record<HostId, { ready: boolean; reason?: string }>> = {};
   for (const [host, writer] of Object.entries(ctx.writers) as [HostId, HostWriter][]) {
     try {
@@ -446,7 +452,7 @@ export async function writerReadiness(
       if (await writer.isBusy()) {
         result[host] = {
           ready: false,
-          reason: `${ctx.adapters[host].displayName} 正在运行。`,
+          reason: copy.runningStatus(ctx.adapters[host].displayName),
         };
       } else {
         result[host] = { ready: true };

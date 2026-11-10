@@ -1,6 +1,7 @@
 import type { HostId, HostStatus } from "@bridge/contracts";
 
 import { HOST_LABEL, HOST_ORDER, num, timeAgo } from "../format";
+import { useI18n } from "../i18n";
 
 const HOST_ICONS: Record<HostId, string> = {
   qoder: new URL("../assets/hosts/qoder.svg", import.meta.url).href,
@@ -19,6 +20,7 @@ interface Props {
 }
 
 export function HostRail({ hosts, activeHost, scannedAt, onSelect, onRefresh, busy }: Props) {
+  const { lang, t } = useI18n();
   const ordered = HOST_ORDER.map((id) => hosts.find((host) => host.id === id)).filter(
     (host): host is HostStatus => Boolean(host),
   );
@@ -35,9 +37,9 @@ export function HostRail({ hosts, activeHost, scannedAt, onSelect, onRefresh, bu
           className="icon-button"
           onClick={onRefresh}
           disabled={busy}
-          title="重新扫描四个 Agent"
+          title={t("rescanTitle")}
         >
-          {busy ? "扫描中" : "刷新"}
+          {busy ? t("scanning") : t("refresh")}
         </button>
       </div>
 
@@ -48,11 +50,11 @@ export function HostRail({ hosts, activeHost, scannedAt, onSelect, onRefresh, bu
         onClick={() => onSelect("all")}
       >
         <span className="host-dot" aria-hidden="true" />
-        <span className="host-name">全部会话</span>
-        <span className="host-count">{num(total)}</span>
+        <span className="host-name">{t("allSessions")}</span>
+        <span className="host-count">{num(total, lang)}</span>
       </button>
 
-      <div className="rail-label">Agent</div>
+      <div className="rail-label">{t("agent")}</div>
       <div className="host-list">
         {ordered.map((host) => (
           <button
@@ -65,14 +67,18 @@ export function HostRail({ hosts, activeHost, scannedAt, onSelect, onRefresh, bu
             <img className="host-icon" src={HOST_ICONS[host.id]} alt="" width="24" height="24" />
             <span className="host-name">
               {HOST_LABEL[host.id]}
-              {!host.detected && <span className="host-missing">未安装</span>}
+              {!host.detected && <span className="host-missing">{t("notInstalled")}</span>}
             </span>
             <span className="host-meta" title={host.writeBlockedReason ?? ""}>
               <span className={host.writeReady ? "write-dot ok" : "write-dot"} />
-              {host.capabilities.writable ? (host.writeReady ? "可写入" : "暂不可写") : "只读"}
+              {host.capabilities.writable
+                ? host.writeReady
+                  ? t("writable")
+                  : t("unavailable")
+                : t("readOnly")}
               {host.version ? ` · ${host.version}` : ""}
             </span>
-            <span className="host-count">{num(host.sessionCount)}</span>
+            <span className="host-count">{num(host.sessionCount, lang)}</span>
           </button>
         ))}
       </div>
@@ -80,9 +86,9 @@ export function HostRail({ hosts, activeHost, scannedAt, onSelect, onRefresh, bu
       <div className="rail-foot">
         <div className="rail-status">
           <span className="status-dot" aria-hidden="true" />
-          本地存储
+          {t("localStore")}
         </div>
-        <div>上次扫描 {scannedAt ? timeAgo(scannedAt) : "—"}</div>
+        <div>{t("lastScan", { time: scannedAt ? timeAgo(scannedAt, t) : "—" })}</div>
       </div>
     </aside>
   );

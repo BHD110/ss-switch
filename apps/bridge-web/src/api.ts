@@ -1,5 +1,7 @@
 import type { BridgeApi } from "@bridge/contracts";
 
+import { storedLang, translate } from "./i18n";
+
 declare global {
   interface Window {
     bridge?: BridgeApi;
@@ -8,7 +10,7 @@ declare global {
 
 export function bridge(): BridgeApi {
   if (!window.bridge) {
-    throw new Error("请在 Session Bridge 桌面应用中打开此界面（window.bridge 不可用）");
+    throw new Error(translate(storedLang(), "desktopOnlyError"));
   }
   return window.bridge;
 }

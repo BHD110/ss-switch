@@ -8,7 +8,7 @@ import type {
   StoredSession,
   TxSummary,
 } from "@bridge/contracts";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { bridge, hasBridge } from "./api";
 import { HistoryPanel } from "./components/HistoryPanel";
@@ -17,10 +17,15 @@ import { SessionList } from "./components/SessionList";
 import { SessionPreview } from "./components/SessionPreview";
 import { SwitchSheet } from "./components/SwitchSheet";
 import { HOST_LABEL } from "./format";
+import { useI18n } from "./i18n";
 
 type Theme = "dark" | "light";
 
 export function App() {
+  const { lang, setLang, t } = useI18n();
+  const langRef = useRef(lang);
+  langRef.current = lang;
+  const statusLang = useRef(lang);
   const [hosts, setHosts] = useState<HostStatus[]>([]);
   const [sessions, setSessions] = useState<StoredSession[]>([]);
   const [activeHost, setActiveHost] = useState<HostId | "all">("all");
@@ -54,7 +59,7 @@ export function App() {
     setScanning(true);
     setToast(undefined);
     try {
-      const report: ScanReport = await bridge().scan(force);
+      const report: ScanReport = await bridge().scan(force, langRef.current);
       setHosts(report.hosts);
       setScannedAt(report.scannedAt);
       const [list, transactions] = await Promise.all([
@@ -65,7 +70,9 @@ export function App() {
       ]);
       setSessions(list);
       if (transactions) setHistory(transactions);
-      if (report.warnings.length) setToast(report.warnings.join("；"));
+      if (report.warnings.length) {
+        setToast(report.warnings.join(langRef.current === "zh" ? "；" : "; "));
+      }
     } catch (cause) {
       setToast(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -84,6 +91,17 @@ export function App() {
       .then(setDivergence)
       .catch(() => setDivergence([]));
   }, [ready]);
+
+  useEffect(() => {
+    if (!ready) return;
+    // The first scan already supplies statuses; only refresh after a language switch.
+    if (statusLang.current === lang) return;
+    statusLang.current = lang;
+    bridge()
+      .hosts(lang)
+      .then(setHosts)
+      .catch(() => undefined);
+  }, [lang, ready]);
 
   const filtered = useMemo(() => {
     const needle = text.trim().toLowerCase();
@@ -126,28 +144,34 @@ export function App() {
     }
   }, []);
 
-  const openFolder = useCallback(async (path: string) => {
-    try {
-      const outcome = await bridge().openFolder(path);
-      if (!outcome.ok) setToast(outcome.error ?? "无法打开目录");
-    } catch (cause) {
-      setToast(cause instanceof Error ? cause.message : String(cause));
-    }
-  }, []);
+  const openFolder = useCallback(
+    async (path: string) => {
+      try {
+        const outcome = await bridge().openFolder(path, lang);
+        if (!outcome.ok) setToast(outcome.error ?? t("openFolderFailed"));
+      } catch (cause) {
+        setToast(cause instanceof Error ? cause.message : String(cause));
+      }
+    },
+    [lang, t],
+  );
 
-  const openSessionFolder = useCallback(async (ref: SessionRef) => {
-    const api = bridge();
-    if (!api.openSessionFolder) {
-      setToast("请在 ss switch 桌面版中打开本地工作目录");
-      return;
-    }
-    try {
-      const outcome = await api.openSessionFolder(ref);
-      if (!outcome.ok) setToast(outcome.error ?? "无法打开工作目录");
-    } catch (cause) {
-      setToast(cause instanceof Error ? cause.message : String(cause));
-    }
-  }, []);
+  const openSessionFolder = useCallback(
+    async (ref: SessionRef) => {
+      const api = bridge();
+      if (!api.openSessionFolder) {
+        setToast(t("workdirDesktopOnly"));
+        return;
+      }
+      try {
+        const outcome = await api.openSessionFolder(ref, lang);
+        if (!outcome.ok) setToast(outcome.error ?? t("openWorkdirFailed"));
+      } catch (cause) {
+        setToast(cause instanceof Error ? cause.message : String(cause));
+      }
+    },
+    [lang, t],
+  );
 
   const refreshMeta = useCallback(async () => {
     const [tx, div] = await Promise.all([
@@ -167,9 +191,9 @@ export function App() {
       setBusyTx(txId);
       try {
         const outcome = await bridge().undo(txId);
-        if (!outcome.ok) setToast(outcome.error ?? "撤销失败");
+        if (!outcome.ok) setToast(outcome.error ?? t("undoFailed"));
         else {
-          setToast("已撤销该次导入");
+          setToast(t("undoDone"));
           await refreshMeta();
           await refresh(true);
         }
@@ -177,7 +201,7 @@ export function App() {
         setBusyTx("");
       }
     },
-    [refresh, refreshMeta],
+    [refresh, refreshMeta, t],
   );
 
   return (
@@ -193,24 +217,32 @@ export function App() {
       <main className="workspace">
         <div className="topbar">
           <div className="crumbs">
-            <h1>{activeHost === "all" ? "全部会话" : HOST_LABEL[activeHost]}</h1>
-            {!ready && <span className="badge bad">需要在桌面应用中运行</span>}
+            <h1>{activeHost === "all" ? t("allSessions") : HOST_LABEL[activeHost]}</h1>
+            {!ready && <span className="badge bad">{t("desktopOnly")}</span>}
           </div>
           <div className="top-actions">
             {divergence.length > 0 && (
-              <span className="badge branch" title="导入后两端各自有了新内容">
-                {divergence.length} 条分叉
+              <span className="badge branch" title={t("divergenceTitle")}>
+                {t("divergenceBadge", { n: divergence.length })}
               </span>
             )}
             <button type="button" className="ghost" onClick={() => setHistoryOpen(true)}>
-              历史
+              {t("history")}
+            </button>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => setLang(lang === "zh" ? "en" : "zh")}
+              title={t("langSwitchTitle")}
+            >
+              {t("langSwitchLabel")}
             </button>
             <button
               type="button"
               className="ghost"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             >
-              {theme === "dark" ? "浅色" : "深色"}
+              {theme === "dark" ? t("lightMode") : t("darkMode")}
             </button>
           </div>
         </div>
@@ -249,7 +281,10 @@ export function App() {
         onDone={(result) => {
           if (result?.ok) {
             setToast(
-              `已写入 ${HOST_LABEL[result.targetHost]}：${result.targetNativeId ?? ""}。重启目标应用后可在列表看到。`,
+              t("copiedToast", {
+                host: HOST_LABEL[result.targetHost],
+                id: result.targetNativeId ?? "",
+              }),
             );
           }
           void refreshMeta();

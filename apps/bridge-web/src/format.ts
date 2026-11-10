@@ -1,5 +1,7 @@
 import type { HostId } from "@bridge/contracts";
 
+import type { Lang, Translate } from "./i18n";
+
 export const HOST_LABEL: Record<HostId, string> = {
   qoder: "Qoder",
   zcode: "ZCode",
@@ -9,23 +11,23 @@ export const HOST_LABEL: Record<HostId, string> = {
 
 export const HOST_ORDER: HostId[] = ["qoder", "zcode", "codex", "workbuddy"];
 
-export function shortPath(path: string, keep = 2): string {
-  if (!path) return "（无工作目录）";
+export function shortPath(path: string, keep: number, t: Translate): string {
+  if (!path) return t("noCwd");
   const parts = path.split(String.fromCharCode(92)).join("/").split("/").filter(Boolean);
   return parts.length <= keep ? path : `…/${parts.slice(-keep).join("/")}`;
 }
 
-export function timeAgo(ms: number): string {
+export function timeAgo(ms: number, t: Translate): string {
   if (!ms) return "—";
   const delta = Date.now() - ms;
   if (delta < 0) return formatTime(ms);
   const minute = 60_000;
   const hour = 60 * minute;
   const day = 24 * hour;
-  if (delta < minute) return "刚刚";
-  if (delta < hour) return `${Math.floor(delta / minute)} 分钟前`;
-  if (delta < day) return `${Math.floor(delta / hour)} 小时前`;
-  if (delta < 30 * day) return `${Math.floor(delta / day)} 天前`;
+  if (delta < minute) return t("justNow");
+  if (delta < hour) return t("minutesAgo", { n: Math.floor(delta / minute) });
+  if (delta < day) return t("hoursAgo", { n: Math.floor(delta / hour) });
+  if (delta < 30 * day) return t("daysAgo", { n: Math.floor(delta / day) });
   return formatDate(ms);
 }
 
@@ -43,38 +45,38 @@ function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
 
-export function num(value: number | undefined): string {
+export function num(value: number | undefined, lang: Lang): string {
   if (value === undefined || value === null) return "—";
-  return value.toLocaleString("zh-CN");
+  return value.toLocaleString(lang === "zh" ? "zh-CN" : "en-US");
 }
 
-export function stateLabel(state: string): string {
+export function stateLabel(state: string, t: Translate): string {
   switch (state) {
     case "prepared":
-      return "已准备";
+      return t("statePrepared");
     case "writing":
-      return "写入中";
+      return t("stateWriting");
     case "verifying":
-      return "校验中";
+      return t("stateVerifying");
     case "committed":
-      return "已完成";
+      return t("stateCommitted");
     case "failed":
-      return "失败";
+      return t("stateFailed");
     case "rolled_back":
-      return "已撤销";
+      return t("stateRolledBack");
     default:
       return state;
   }
 }
 
-export function fidelityLabel(fidelity: string): string {
+export function fidelityLabel(fidelity: string, t: Translate): string {
   switch (fidelity) {
     case "high":
-      return "可保留对话内容";
+      return t("fidelityHigh");
     case "adapted":
-      return "部分内容的显示方式可能不同";
+      return t("fidelityAdapted");
     case "view_only":
-      return "仅查看";
+      return t("fidelityViewOnly");
     default:
       return fidelity;
   }

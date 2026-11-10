@@ -5,8 +5,8 @@ const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> =>
   ipcRenderer.invoke(channel, ...args) as Promise<T>;
 
 const api: BridgeApi = {
-  scan: (force) => invoke(IPC.scan, force),
-  hosts: () => invoke(IPC.hosts),
+  scan: (force, locale) => invoke(IPC.scan, force, locale),
+  hosts: (locale) => invoke(IPC.hosts, locale),
   sessions: (query) => invoke(IPC.sessions, query),
   sessionDetail: (ref) => invoke(IPC.sessionDetail, ref),
   planImport: (request) => invoke(IPC.planImport, request),
@@ -14,8 +14,8 @@ const api: BridgeApi = {
   history: () => invoke(IPC.history),
   undo: (txId) => invoke(IPC.undo, txId),
   openTarget: (result) => invoke(IPC.openTarget, result),
-  openFolder: (path) => invoke(IPC.openFolder, path),
-  openSessionFolder: (ref) => invoke(IPC.openSessionFolder, ref),
+  openFolder: (path, locale) => invoke(IPC.openFolder, path, locale),
+  openSessionFolder: (ref, locale) => invoke(IPC.openSessionFolder, ref, locale),
   divergence: () => invoke(IPC.divergence),
   appInfo: () => invoke(IPC.appInfo),
 };

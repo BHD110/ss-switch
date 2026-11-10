@@ -1,6 +1,7 @@
 import type { DivergenceInfo, HostId, StoredSession } from "@bridge/contracts";
 
-import { HOST_LABEL, num, shortPath, timeAgo } from "../format";
+import { HOST_LABEL, shortPath, timeAgo } from "../format";
+import { useI18n } from "../i18n";
 
 interface Props {
   sessions: StoredSession[];
@@ -12,9 +13,10 @@ interface Props {
 }
 
 export function SessionList({ sessions, selected, text, onText, onSelect, divergence }: Props) {
+  const { t } = useI18n();
   const groups = new Map<string, StoredSession[]>();
   for (const session of sessions) {
-    const key = session.cwd || "（无工作目录）";
+    const key = session.cwd || t("noCwd");
     const list = groups.get(key) ?? [];
     list.push(session);
     groups.set(key, list);
@@ -26,25 +28,25 @@ export function SessionList({ sessions, selected, text, onText, onSelect, diverg
         <input
           className="search"
           type="search"
-          aria-label="筛选会话"
+          aria-label={t("filterAria")}
           value={text}
           onChange={(event) => onText(event.target.value)}
-          placeholder="按标题或工作目录筛选"
+          placeholder={t("filterPlaceholder")}
           spellCheck={false}
         />
-        <span className="list-count">{num(sessions.length)} 个会话</span>
+        <span className="list-count">{t("sessionCount", { n: sessions.length })}</span>
       </div>
       <div className="session-scroll">
         {sessions.length === 0 && (
           <div className="empty">
-            <div className="empty-title">没有匹配的会话</div>
-            <p>换一个关键词，或点击左侧的刷新按钮。</p>
+            <div className="empty-title">{t("noMatches")}</div>
+            <p>{t("noMatchesHint")}</p>
           </div>
         )}
         {[...groups.entries()].map(([cwd, items]) => (
           <div key={cwd} className="session-group">
             <div className="group-label" title={cwd}>
-              {shortPath(cwd, 3)}
+              {shortPath(cwd, 3, t)}
             </div>
             {items.map((session) => {
               const isSelected =
@@ -58,16 +60,16 @@ export function SessionList({ sessions, selected, text, onText, onSelect, diverg
                   onClick={() => onSelect(session)}
                 >
                   <div className="card-top">
-                    <span className="card-title">{session.title || "未命名会话"}</span>
+                    <span className="card-title">{session.title || t("untitled")}</span>
                   </div>
                   <div className="card-meta">
                     <span className="host-chip" data-host={session.host}>
                       {HOST_LABEL[session.host]}
                     </span>
-                    <span>{timeAgo(session.updatedAt)}</span>
-                    {!session.desktopVisible && <span className="badge cli">仅 CLI 可见</span>}
+                    <span>{timeAgo(session.updatedAt, t)}</span>
+                    {!session.desktopVisible && <span className="badge cli">{t("cliOnly")}</span>}
                     {session.lineageId && branched.has(session.lineageId) && (
-                      <span className="badge branch">已分叉</span>
+                      <span className="badge branch">{t("branched")}</span>
                     )}
                   </div>
                 </button>
