@@ -15,6 +15,7 @@ const api: BridgeApi = {
   undo: (txId) => invoke(IPC.undo, txId),
   openTarget: (result) => invoke(IPC.openTarget, result),
   openFolder: (path) => invoke(IPC.openFolder, path),
+  openSessionFolder: (ref) => invoke(IPC.openSessionFolder, ref),
   divergence: () => invoke(IPC.divergence),
   appInfo: () => invoke(IPC.appInfo),
 };

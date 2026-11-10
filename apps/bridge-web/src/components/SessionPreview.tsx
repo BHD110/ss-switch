@@ -1,4 +1,4 @@
-import type { HostId, SessionDetail, StoredPart, StoredTurn } from "@bridge/contracts";
+import type { HostId, SessionDetail, SessionRef, StoredPart, StoredTurn } from "@bridge/contracts";
 import { useMemo, useState } from "react";
 
 import { formatTime, HOST_LABEL, num, shortPath } from "../format";
@@ -10,7 +10,7 @@ interface Props {
   selectedHost?: HostId;
   writable?: boolean;
   onSwitch(): void;
-  onOpenFolder(path: string): void;
+  onOpenFolder(ref: SessionRef): void;
 }
 
 const FIRST_PAGE = 40;
@@ -74,7 +74,7 @@ export function SessionPreview({
           <span className="host-chip" data-host={session.host}>
             {HOST_LABEL[session.host]}
           </span>
-          <h1>{session.title || "未命名会话"}</h1>
+          <h2>{session.title || "未命名会话"}</h2>
         </div>
         <div className="preview-meta">
           <span className="mono" title={session.cwd}>
@@ -84,22 +84,26 @@ export function SessionPreview({
           <span>
             {num(turns.length)} 轮 · {num(detail.parts.length)} 条内容
           </span>
-          {session.model && <span className="mono">{session.model}</span>}
           {!session.desktopVisible && <span className="badge cli">仅 CLI 可见</span>}
         </div>
         <div className="preview-actions">
           <button type="button" className="primary" onClick={onSwitch} disabled={!canSwitch}>
             复制到…
           </button>
-          <button type="button" className="ghost" onClick={() => onOpenFolder(session.cwd)}>
+          <button
+            type="button"
+            className="ghost"
+            disabled={!session.cwd}
+            title={session.cwd ? undefined : "该会话没有记录工作目录"}
+            onClick={() => onOpenFolder({ host: session.host, nativeId: session.nativeId })}
+          >
             打开工作目录
           </button>
-          <span className="mono session-id" title={session.nativeId}>
-            {session.nativeId}
-          </span>
         </div>
         {!canSwitch && (
-          <div className="note">{HOST_LABEL[session.host]} 当前不可写入；请先退出目标应用或检查数据目录。</div>
+          <div className="note">
+            {HOST_LABEL[session.host]} 当前不可写入；请先退出目标应用或检查数据目录。
+          </div>
         )}
         {detail.warnings.length > 0 && (
           <div className="warnings">
@@ -183,7 +187,6 @@ function PartView({ part }: { part: StoredPart }) {
             <span className="tool-dot" />
             <span className="tool-name">{part.toolName ?? "tool"}</span>
             <span className="tool-state">{toolStateLabel(part.toolState)}</span>
-            {part.toolCallId && <span className="mono tool-id">{part.toolCallId}</span>}
           </div>
           <details>
             <summary>输入</summary>
@@ -201,7 +204,7 @@ function PartView({ part }: { part: StoredPart }) {
     case "tool_result":
       return (
         <details className="part details small">
-          <summary>工具结果{part.toolCallId ? ` · ${part.toolCallId}` : ""}</summary>
+          <summary>工具结果</summary>
           <pre className="pre">{clip(part.text ?? "")}</pre>
         </details>
       );

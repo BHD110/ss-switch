@@ -20,7 +20,7 @@ import type {
 } from "@bridge/contracts";
 import { type Database, DatabaseSync } from "./sqlite";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS host (
@@ -150,7 +150,15 @@ export class BridgeStore {
       }
     }
     if (row.user_version < SCHEMA_VERSION) {
-      this.db.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
+      this.transaction(() => {
+        const version = this.db.prepare("PRAGMA user_version").get() as { user_version: number };
+        if (version.user_version >= SCHEMA_VERSION) return;
+        this.db.exec(`
+          ALTER TABLE tx ADD COLUMN src_title TEXT;
+          ALTER TABLE tx ADD COLUMN dst_title TEXT;
+          PRAGMA user_version=${SCHEMA_VERSION};
+        `);
+      });
     }
     this.tryFts();
   }
@@ -517,19 +525,23 @@ export class BridgeStore {
     kind: string;
     src?: string;
     dst?: string;
+    srcTitle?: string;
+    dstTitle?: string;
     backupDir?: string;
     steps?: unknown[];
   }): void {
     this.db
       .prepare(
-        `INSERT INTO tx(id, kind, src, dst, state, backup_dir, steps_json, started_at)
-         VALUES(?,?,?,?, 'prepared', ?, ?, ?)`,
+        `INSERT INTO tx(id, kind, src, dst, src_title, dst_title, state, backup_dir, steps_json, started_at)
+         VALUES(?,?,?,?,?,?, 'prepared', ?, ?, ?)`,
       )
       .run(
         partial.id,
         partial.kind,
         partial.src ?? null,
         partial.dst ?? null,
+        partial.srcTitle ?? null,
+        partial.dstTitle ?? null,
         partial.backupDir ?? null,
         JSON.stringify(partial.steps ?? []),
         Date.now(),
@@ -562,7 +574,20 @@ export class BridgeStore {
   listTx(): TxSummary[] {
     return (
       this.db
-        .prepare("SELECT * FROM tx ORDER BY started_at DESC LIMIT 200")
+        .prepare(`
+          SELECT tx.id, tx.kind, tx.src, tx.dst, tx.state, tx.backup_dir, tx.steps_json,
+                 tx.error, tx.started_at, tx.finished_at,
+                 COALESCE(NULLIF(TRIM(tx.src_title), ''), source.title) AS src_title,
+                 COALESCE(NULLIF(TRIM(tx.dst_title), ''), target.title) AS dst_title
+          FROM tx
+          LEFT JOIN session AS source
+            ON source.host = substr(tx.src, 1, instr(tx.src, ':') - 1)
+            AND source.native_id = substr(tx.src, instr(tx.src, ':') + 1)
+          LEFT JOIN session AS target
+            ON target.host = substr(tx.dst, 1, instr(tx.dst, ':') - 1)
+            AND target.native_id = substr(tx.dst, instr(tx.dst, ':') + 1)
+          ORDER BY tx.started_at DESC, tx.rowid DESC LIMIT 200
+        `)
         .all() as unknown as TxRow[]
     ).map(txFromRow);
   }
@@ -685,6 +710,8 @@ interface TxRow {
   kind: string;
   src: string | null;
   dst: string | null;
+  src_title: string | null;
+  dst_title: string | null;
   state: string;
   backup_dir: string | null;
   steps_json: string;
@@ -796,6 +823,8 @@ function txFromRow(row: TxRow): TxSummary {
     kind: row.kind,
     src: row.src ?? undefined,
     dst: row.dst ?? undefined,
+    srcTitle: row.src_title ?? undefined,
+    dstTitle: row.dst_title ?? undefined,
     state: row.state as TxSummary["state"],
     startedAt: row.started_at,
     finishedAt: row.finished_at ?? undefined,

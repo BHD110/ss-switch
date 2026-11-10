@@ -166,11 +166,14 @@ export async function runImport(
     existingFile ? [existingFile] : [],
   );
   const backup = await createBackup(ctx.backupRoot, txId, backupFiles);
+  const copyTitle = request.title || detail.session.title;
   ctx.store.createTx({
     id: txId,
     kind: request.mode === "overwrite" ? "overwrite" : "import",
     src: `${request.source.host}:${request.source.nativeId}`,
     dst: `${request.targetHost}:${targetNativeId}`,
+    srcTitle: detail.session.title,
+    dstTitle: request.mode === "overwrite" ? detail.session.title : copyTitle,
     backupDir: backup.dir,
   });
 
@@ -198,7 +201,7 @@ export async function runImport(
         ? await writer.overwrite(detail, targetNativeId)
         : await writer.insert(detail, {
             nativeId: targetNativeId,
-            title: request.title || detail.session.title,
+            title: copyTitle,
             cwd: request.cwd || detail.session.cwd,
             lineageId,
             sourceHost: request.source.host,

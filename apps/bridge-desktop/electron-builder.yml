@@ -5,6 +5,7 @@ directories:
   buildResources: build
 files:
   - dist/**/*
+  - build/icon.ico
   - bootstrap.cjs
   - package.json
   - "!node_modules/**"

@@ -4,6 +4,7 @@ import type {
   HostStatus,
   ScanReport,
   SessionDetail,
+  SessionRef,
   StoredSession,
   TxSummary,
 } from "@bridge/contracts";
@@ -38,7 +39,7 @@ export function App() {
   const [busyTx, setBusyTx] = useState("");
   const [theme, setTheme] = useState<Theme>(() => {
     const stored = localStorage.getItem("bridge-theme");
-    return stored === "light" ? "light" : "dark";
+    return stored === "dark" ? "dark" : "light";
   });
 
   const ready = hasBridge();
@@ -56,8 +57,14 @@ export function App() {
       const report: ScanReport = await bridge().scan(force);
       setHosts(report.hosts);
       setScannedAt(report.scannedAt);
-      const list = await bridge().sessions({ limit: 1200 });
+      const [list, transactions] = await Promise.all([
+        bridge().sessions({ limit: 1200 }),
+        bridge()
+          .history()
+          .catch(() => undefined),
+      ]);
       setSessions(list);
+      if (transactions) setHistory(transactions);
       if (report.warnings.length) setToast(report.warnings.join("；"));
     } catch (cause) {
       setToast(cause instanceof Error ? cause.message : String(cause));
@@ -72,10 +79,6 @@ export function App() {
 
   useEffect(() => {
     if (!ready) return;
-    bridge()
-      .history()
-      .then(setHistory)
-      .catch(() => setHistory([]));
     bridge()
       .divergence()
       .then(setDivergence)
@@ -132,6 +135,20 @@ export function App() {
     }
   }, []);
 
+  const openSessionFolder = useCallback(async (ref: SessionRef) => {
+    const api = bridge();
+    if (!api.openSessionFolder) {
+      setToast("请在 ss switch 桌面版中打开本地工作目录");
+      return;
+    }
+    try {
+      const outcome = await api.openSessionFolder(ref);
+      if (!outcome.ok) setToast(outcome.error ?? "无法打开工作目录");
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : String(cause));
+    }
+  }, []);
+
   const refreshMeta = useCallback(async () => {
     const [tx, div] = await Promise.all([
       bridge()
@@ -171,15 +188,12 @@ export function App() {
         scannedAt={scannedAt}
         onSelect={setActiveHost}
         onRefresh={() => void refresh(true)}
-        onOpenFolder={(path) => void openFolder(path)}
         busy={scanning}
       />
       <main className="workspace">
         <div className="topbar">
           <div className="crumbs">
-            {activeHost === "all" ? "全部会话" : HOST_LABEL[activeHost]}
-            <span className="sep">/</span>
-            <span className="muted">{filtered.length} 个</span>
+            <h1>{activeHost === "all" ? "全部会话" : HOST_LABEL[activeHost]}</h1>
             {!ready && <span className="badge bad">需要在桌面应用中运行</span>}
           </div>
           <div className="top-actions">
@@ -220,7 +234,7 @@ export function App() {
                 : true
             }
             onSwitch={() => setSheetOpen(true)}
-            onOpenFolder={(path) => void openFolder(path)}
+            onOpenFolder={(ref) => void openSessionFolder(ref)}
           />
         </div>
       </main>

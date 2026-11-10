@@ -12,6 +12,13 @@ interface Props {
   onOpenFolder(path: string): void;
 }
 
+function transactionTitle(tx: TxSummary): string {
+  const source = tx.srcTitle?.trim();
+  const target = tx.dstTitle?.trim();
+  if (source && target && source !== target) return `${source} → ${target}`;
+  return source || target || "会话名称不可用";
+}
+
 export function HistoryPanel({
   open,
   history,
@@ -22,13 +29,20 @@ export function HistoryPanel({
   onOpenFolder,
 }: Props) {
   if (!open) return null;
+  const counts = new Map<string, number>();
+  // History is newest first, so number matching titles from oldest to newest.
+  const entries = history.toReversed().map((tx) => {
+    const title = transactionTitle(tx);
+    const number = (counts.get(title) ?? 0) + 1;
+    counts.set(title, number);
+    return { tx, title, number };
+  });
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet wide" onClick={(event) => event.stopPropagation()}>
         <header className="sheet-head">
           <div>
-            <div className="sheet-kicker">导入记录</div>
-            <h2>历史与回滚</h2>
+            <h2>历史记录</h2>
             <div className="sheet-sub">每次写入都有独立备份；撤销只移除 Bridge 创建的目标。</div>
           </div>
           <button type="button" className="icon-button" onClick={onClose}>
@@ -60,13 +74,14 @@ export function HistoryPanel({
           <div className="field-label">事务</div>
           <div className="tx-list">
             {history.length === 0 && <div className="field-hint">还没有导入记录。</div>}
-            {history.map((tx) => (
+            {entries.reverse().map(({ tx, title, number }) => (
               <div key={tx.id} className="tx-row">
                 <span className={`tx-state ${tx.state}`}>{stateLabel(tx.state)}</span>
-                <span className="mono truncate">{tx.src ?? "—"}</span>
-                <span className="arrow">→</span>
-                <span className="mono truncate">{tx.dst ?? "—"}</span>
-                <span className="hint">{formatTime(tx.startedAt)}</span>
+                <span className="tx-title" title={title}>
+                  <span>{title}</span>
+                  {(counts.get(title) ?? 0) > 1 && <span>（{number}）</span>}
+                </span>
+                <span className="hint tx-time">{formatTime(tx.startedAt)}</span>
                 {tx.backupDir && (
                   <button
                     type="button"
@@ -85,11 +100,6 @@ export function HistoryPanel({
                   >
                     {busyTx === tx.id ? "撤销中…" : "撤销"}
                   </button>
-                )}
-                {tx.error && (
-                  <span className="tx-error" title={tx.error}>
-                    {tx.error}
-                  </span>
                 )}
               </div>
             ))}

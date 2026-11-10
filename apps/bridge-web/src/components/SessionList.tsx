@@ -25,6 +25,8 @@ export function SessionList({ sessions, selected, text, onText, onSelect, diverg
       <div className="list-head">
         <input
           className="search"
+          type="search"
+          aria-label="筛选会话"
           value={text}
           onChange={(event) => onText(event.target.value)}
           placeholder="按标题或工作目录筛选"
@@ -36,7 +38,7 @@ export function SessionList({ sessions, selected, text, onText, onSelect, diverg
         {sessions.length === 0 && (
           <div className="empty">
             <div className="empty-title">没有匹配的会话</div>
-            <p>换一个关键词，或点击右上角刷新。</p>
+            <p>换一个关键词，或点击左侧的刷新按钮。</p>
           </div>
         )}
         {[...groups.entries()].map(([cwd, items]) => (
@@ -52,17 +54,17 @@ export function SessionList({ sessions, selected, text, onText, onSelect, diverg
                   type="button"
                   key={session.id}
                   className={`session-card ${isSelected ? "selected" : ""}`}
+                  aria-pressed={isSelected}
                   onClick={() => onSelect(session)}
                 >
                   <div className="card-top">
-                    <span className="host-chip" data-host={session.host}>
-                      {HOST_LABEL[session.host]}
-                    </span>
                     <span className="card-title">{session.title || "未命名会话"}</span>
                   </div>
                   <div className="card-meta">
+                    <span className="host-chip" data-host={session.host}>
+                      {HOST_LABEL[session.host]}
+                    </span>
                     <span>{timeAgo(session.updatedAt)}</span>
-                    {session.model && <span className="mono truncate">{session.model}</span>}
                     {!session.desktopVisible && <span className="badge cli">仅 CLI 可见</span>}
                     {session.lineageId && branched.has(session.lineageId) && (
                       <span className="badge branch">已分叉</span>

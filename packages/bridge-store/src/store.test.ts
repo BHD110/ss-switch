@@ -127,4 +127,38 @@ describe("BridgeStore", () => {
     expect(db.unfinishedTx()).toHaveLength(0);
     db.close();
   });
+
+  it("resolves older transaction titles and keeps new titles after the sessions are gone", () => {
+    const db = store();
+    const path = db.db.location()!;
+    db.db.exec(`
+      ALTER TABLE tx DROP COLUMN src_title;
+      ALTER TABLE tx DROP COLUMN dst_title;
+      PRAGMA user_version=2;
+      INSERT INTO tx(id, kind, src, dst, state, started_at)
+      VALUES ('legacy', 'import', 'qoder:legacy:source', 'zcode:legacy:target', 'committed', 1);
+      INSERT INTO session(id, host, native_id, title) VALUES
+        ('source', 'qoder', 'legacy:source', '旧会话'),
+        ('target', 'zcode', 'legacy:target', '旧会话副本');
+    `);
+    db.close();
+
+    const migrated = new BridgeStore(path);
+    expect(migrated.listTx()[0]).toMatchObject({ srcTitle: "旧会话", dstTitle: "旧会话副本" });
+    migrated.createTx({
+      id: "new",
+      kind: "import",
+      src: "qoder:removed-source",
+      dst: "zcode:removed-target",
+      srcTitle: "原会话",
+      dstTitle: "副本名称",
+    });
+    migrated.updateTx("new", "rolled_back");
+    expect(migrated.listTx()[0]).toMatchObject({
+      srcTitle: "原会话",
+      dstTitle: "副本名称",
+      state: "rolled_back",
+    });
+    migrated.close();
+  });
 });

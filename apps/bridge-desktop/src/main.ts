@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import {
   type HostId,
   type HostStatus,
@@ -267,6 +267,18 @@ function registerIpc(): void {
     return error ? { ok: false, error } : { ok: true };
   });
 
+  ipcMain.handle(IPC.openSessionFolder, async (_event, rawRef: unknown) => {
+    const { host, nativeId } = assertSessionRef(rawRef);
+    const cwd = bridgeContext().store.getSession(host, nativeId)?.cwd;
+    if (!cwd) return { ok: false, error: "该会话没有记录工作目录" };
+    if (!isAbsolute(cwd)) return { ok: false, error: "该会话的工作目录不是绝对路径" };
+    const target = resolve(cwd);
+    const entry = await stat(target).catch(() => undefined);
+    if (!entry?.isDirectory()) return { ok: false, error: "工作目录不存在或无法访问" };
+    const error = await shell.openPath(target);
+    return error ? { ok: false, error: `无法打开工作目录：${error}` } : { ok: true };
+  });
+
   ipcMain.handle(IPC.divergence, async () => detectDivergence(bridgeContext()));
 
   ipcMain.handle(IPC.appInfo, async () => ({
@@ -287,7 +299,8 @@ async function createWindow(): Promise<void> {
     minWidth: 1080,
     minHeight: 680,
     show: false,
-    backgroundColor: "#1b211d",
+    backgroundColor: "#eaf0f5",
+    icon: join(app.getAppPath(), "build", "icon.ico"),
     title: "ss switch",
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),

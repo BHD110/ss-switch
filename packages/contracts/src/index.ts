@@ -193,6 +193,8 @@ export interface TxSummary {
   kind: string;
   src?: string;
   dst?: string;
+  srcTitle?: string;
+  dstTitle?: string;
   state: "prepared" | "writing" | "verifying" | "committed" | "failed" | "rolled_back";
   startedAt: number;
   finishedAt?: number;
@@ -231,6 +233,7 @@ export const IPC = {
   undo: "bridge:undo",
   openTarget: "bridge:open-target",
   openFolder: "bridge:open-folder",
+  openSessionFolder: "bridge:open-session-folder",
   divergence: "bridge:divergence",
   appInfo: "bridge:app-info",
 } as const;
@@ -249,6 +252,7 @@ export interface BridgeApi {
   undo(txId: string): Promise<UndoResult>;
   openTarget(result: ImportResult): Promise<{ ok: boolean; error?: string }>;
   openFolder(path: string): Promise<{ ok: boolean; error?: string }>;
+  openSessionFolder(ref: SessionRef): Promise<{ ok: boolean; error?: string }>;
   divergence(): Promise<DivergenceInfo[]>;
   appInfo(): Promise<{ version: string; userData: string; home: string }>;
 }
