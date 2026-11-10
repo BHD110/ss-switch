@@ -64,11 +64,6 @@
 
 </details>
 
-## 技术架构
-
-![SS Switch 技术架构图。React 界面经 Preload 和 IPC 调用 Electron 主进程。浏览和迁移共用客户端适配器与 Bridge Store。迁移按计划、备份、写入、校验、提交执行。适配器直接读写四个客户端的本地数据。](./ss-switch-architecture.svg)
-
-
 ## 快速开始
 
 要求：Windows、Node ≥ 24、pnpm 10。
@@ -112,40 +107,6 @@ pnpm package:win
 | ZCode 会话        | `~/.zcode/cli/db/db.sqlite` + `~/.zcode/v2/tasks-index.sqlite`                                       |
 | Codex 会话        | `~/.codex/sessions/**/rollout-*.jsonl` + `~/.codex/session_index.jsonl` + `~/.codex/sqlite/codex.db` |
 | WorkBuddy 会话    | `~/.workbuddy/workbuddy.db` + `~/.workbuddy/projects/**/*.jsonl`                                     |
-
-## 已验证
-
-可重复执行：
-
-```bash
-pnpm test          # 解析器 / 存储 / 导入计划 / 路径规则（21 项）
-pnpm test:e2e      # 复制 → 覆盖 → 撤销 → 分叉 → 版本拒绝 → 四端往返（50 项，全部在临时副本上）
-pnpm m0            # 写入器往返 + Qoder CLI 可见性（临时副本）
-pnpm doctor        # 只读检查四个 Agent 的根目录、版本、会话数、写入条件
-pnpm repair:zcode  # 修复已有 ZCode 导入（先退出 ZCode；自动备份由写入前流程负责）
-```
-
-已确认：
-
-- Qoder 写入后，`qoderclicn --config-dir <tmp> --list-sessions` 能在对应工作目录列出新会话。
-- Qoder 与 ZCode 的写入、覆盖、删除都在独立副本上通过；写入后读回轮次、工具调用、搜索结果一致。
-- Codex 与 WorkBuddy 的写入、覆盖、撤销都在复制出来的 `codex.db` / `workbuddy.db` 上通过；Codex 写入后 rollout、`session_index.jsonl`、`local_thread_catalog` 三处一致，WorkBuddy 写入后 `sessions` 行与项目 JSONL 一致。
-- Qoder→Codex→WorkBuddy 以及 Codex→WorkBuddy 的跨端复制能读回完整轮次；Codex 覆盖后撤销能还原原 rollout。
-- 真实 Qoder 会话导入 ZCode 副本后，源 JSONL 哈希保持不变。
-- 覆盖后的撤销能还原备份；复制后的撤销只移除新目标。
-- 目标端在导入后新增内容会被标记为分叉；未知的新版本 schema 会拒绝写入（fail-closed）。
-
-**桌面列表仍需一次人工确认**：Qoder、ZCode、Codex、WorkBuddy 的写入校验都在临时副本上完成，真实桌面列表的可见性需要在目标应用完全退出后写一次、再启动确认。额外探测确认：Qoder 桌面**不会**实时导入新出现的 JSONL（写入后 20 秒内 `chat_sessions` 没有新行），所以写入 `main.sqlite` 是必需的，并且必须重启 Qoder 才能在列表里看到新会话。Codex 与 WorkBuddy 同样写入了桌面列表所依赖的库（Codex 的 `local_thread_catalog`、WorkBuddy 的 `sessions`），需要在重启后确认。写真实库前请先完全退出目标应用，然后运行：
-
-```bash
-pnpm probe prepare   # 写入两条一次性测试会话（先备份）
-# 打开 Qoder 与 ZCode，确认出现“ss switch 可见性测试”
-# 完全退出两个应用
-pnpm probe cleanup   # 删除测试会话，源数据不变
-```
-
-`pnpm probe status` 可查看目标索引里是否已出现这两条会话。
-
 
 ## 目录结构
 
