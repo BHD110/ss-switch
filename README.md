@@ -6,8 +6,6 @@
 
 > 跨平台 AI 编程会话（上下文）无缝迁移工具。打破工具壁垒，带着记忆在不同的 Harness 之间自由横跳。
 
----
-
 ##  为什么需要 ss switch？
 
 作为重度 AI 开发者，你一定遇到过这样的崩溃时刻：
@@ -26,7 +24,6 @@
 
 ### 当前支持的 Harness
 - Qoder
-- ZDox
 - ZCode
 - Codex
 - WorkBuddy
