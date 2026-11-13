@@ -6,6 +6,7 @@ import type {
   StoredPart,
   StoredTurn,
 } from "@bridge/contracts";
+import { ChevronDown, Copy, FolderOpen } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { formatTime, HOST_LABEL, num, shortPath } from "../format";
@@ -111,6 +112,7 @@ export function SessionPreview({
         </div>
         <div className="preview-actions">
           <button type="button" className="primary" onClick={onSwitch} disabled={!canSwitch}>
+            <Copy aria-hidden="true" />
             {t("copyTo")}
           </button>
           <button
@@ -120,6 +122,7 @@ export function SessionPreview({
             title={session.cwd ? undefined : t("noCwdTitle")}
             onClick={() => onOpenFolder({ host: session.host, nativeId: session.nativeId })}
           >
+            <FolderOpen aria-hidden="true" />
             {t("openWorkdir")}
           </button>
         </div>
@@ -145,6 +148,7 @@ export function SessionPreview({
             className="load-more"
             onClick={() => setVisible((value) => value + 60)}
           >
+            <ChevronDown aria-hidden="true" />
             {t("loadMore", { n: turns.length - visible })}
           </button>
         )}

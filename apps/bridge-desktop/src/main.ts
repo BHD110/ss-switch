@@ -23,7 +23,7 @@ import {
   writerReadiness,
 } from "@bridge/migrate";
 import { BridgeStore } from "@bridge/store";
-import { app, BrowserWindow, clipboard, ipcMain, shell } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain, shell, type WebContents } from "electron";
 
 declare const __dirname: string;
 
@@ -66,6 +66,10 @@ let store: BridgeStore | undefined;
 let context: ImportContext | undefined;
 let window: BrowserWindow | undefined;
 let scanAt = 0;
+
+function controlledWindow(sender: WebContents): BrowserWindow | undefined {
+  return window?.webContents === sender ? window : undefined;
+}
 
 function bridgeContext(): ImportContext {
   if (context) return context;
@@ -333,6 +337,18 @@ function registerIpc(): void {
     userData: app.getPath("userData"),
     home: homedir(),
   }));
+
+  ipcMain.on(IPC.windowMinimize, (event) => controlledWindow(event.sender)?.minimize());
+  ipcMain.on(IPC.windowToggleMaximize, (event) => {
+    const target = controlledWindow(event.sender);
+    if (!target) return;
+    if (target.isMaximized()) target.unmaximize();
+    else target.maximize();
+  });
+  ipcMain.on(IPC.windowClose, (event) => controlledWindow(event.sender)?.close());
+  ipcMain.handle(IPC.windowState, (event) =>
+    Boolean(controlledWindow(event.sender)?.isMaximized()),
+  );
 }
 
 function sep(): string {
@@ -345,6 +361,7 @@ async function createWindow(): Promise<void> {
     height: 920,
     minWidth: 1080,
     minHeight: 680,
+    frame: false,
     show: false,
     backgroundColor: "#eaf0f5",
     icon: join(app.getAppPath(), "build", "icon.ico"),
@@ -363,6 +380,9 @@ async function createWindow(): Promise<void> {
     if (process.env.BRIDGE_CAPTURE) return;
     window?.show();
   });
+
+  window.on("maximize", () => window?.webContents.send(IPC.windowStateChanged, true));
+  window.on("unmaximize", () => window?.webContents.send(IPC.windowStateChanged, false));
 
   window.webContents.on("did-finish-load", () => log("window loaded"));
   window.webContents.on("did-fail-load", (_event, code, description, url) => {

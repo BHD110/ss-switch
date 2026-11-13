@@ -8,6 +8,7 @@ import type {
   StoredSession,
   TxSummary,
 } from "@bridge/contracts";
+import { Copy, History, Minus, Moon, Square, Sun, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { bridge, hasBridge } from "./api";
@@ -20,6 +21,11 @@ import { HOST_LABEL } from "./format";
 import { useI18n } from "./i18n";
 
 type Theme = "dark" | "light";
+
+const LANGUAGE_FLAGS = {
+  en: new URL("./assets/flags/us.svg", import.meta.url).href,
+  zh: new URL("./assets/flags/cn.svg", import.meta.url).href,
+};
 
 export function App() {
   const { lang, setLang, t } = useI18n();
@@ -41,6 +47,7 @@ export function App() {
   const [history, setHistory] = useState<TxSummary[]>([]);
   const [divergence, setDivergence] = useState<DivergenceInfo[]>([]);
   const [busyTx, setBusyTx] = useState("");
+  const [maximized, setMaximized] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => {
     const stored = localStorage.getItem("bridge-theme");
     return stored === "dark" ? "dark" : "light";
@@ -52,6 +59,14 @@ export function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("bridge-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const api = bridge();
+    const unsubscribe = api.onWindowStateChanged(setMaximized);
+    void api.windowState().then(setMaximized);
+    return unsubscribe;
+  }, [ready]);
 
   const refresh = useCallback(async (force = true) => {
     if (!hasBridge()) return;
@@ -193,7 +208,7 @@ export function App() {
   );
 
   return (
-    <div className="app">
+    <div className={ready ? "app desktop-shell" : "app"}>
       <HostRail
         hosts={hosts}
         activeHost={activeHost}
@@ -203,7 +218,7 @@ export function App() {
         busy={scanning}
       />
       <main className="workspace">
-        <div className="topbar">
+        <div className={ready ? "topbar desktop-titlebar" : "topbar"}>
           <div className="crumbs">
             <h1>{activeHost === "all" ? t("allSessions") : HOST_LABEL[activeHost]}</h1>
             {!ready && <span className="badge bad">{t("desktopOnly")}</span>}
@@ -214,25 +229,72 @@ export function App() {
                 {t("divergenceBadge", { n: divergence.length })}
               </span>
             )}
-            <button type="button" className="ghost" onClick={() => setHistoryOpen(true)}>
-              {t("history")}
-            </button>
             <button
               type="button"
-              className="ghost"
+              className="ghost language-button"
               onClick={() => setLang(lang === "zh" ? "en" : "zh")}
               title={t("langSwitchTitle")}
+              aria-label={`${t("langSwitchTitle")}: ${t("langSwitchLabel")}`}
             >
+              <img
+                className="language-flag"
+                src={lang === "zh" ? LANGUAGE_FLAGS.en : LANGUAGE_FLAGS.zh}
+                alt=""
+                width="20"
+                height="15"
+              />
               {t("langSwitchLabel")}
             </button>
             <button
               type="button"
-              className="ghost"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="ghost square-button"
+              onClick={() => setHistoryOpen(true)}
+              title={t("history")}
+              aria-label={t("history")}
             >
-              {theme === "dark" ? t("lightMode") : t("darkMode")}
+              <History aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="ghost square-button"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              title={theme === "dark" ? t("lightMode") : t("darkMode")}
+              aria-label={theme === "dark" ? t("lightMode") : t("darkMode")}
+            >
+              {theme === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
             </button>
           </div>
+          {ready && (
+            <div className="window-controls">
+              <button
+                type="button"
+                className="window-control"
+                onClick={() => bridge().windowMinimize()}
+                title={t("minimize")}
+                aria-label={t("minimize")}
+              >
+                <Minus aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="window-control"
+                onClick={() => bridge().windowToggleMaximize()}
+                title={maximized ? t("restore") : t("maximize")}
+                aria-label={maximized ? t("restore") : t("maximize")}
+              >
+                {maximized ? <Copy aria-hidden="true" /> : <Square aria-hidden="true" />}
+              </button>
+              <button
+                type="button"
+                className="window-control close"
+                onClick={() => bridge().windowClose()}
+                title={t("close")}
+                aria-label={t("close")}
+              >
+                <X aria-hidden="true" />
+              </button>
+            </div>
+          )}
         </div>
         <div className="panes">
           <SessionList

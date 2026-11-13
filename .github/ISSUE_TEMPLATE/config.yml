@@ -1,0 +1,5 @@
+blank_issues_enabled: true # 启用空白问题
+contact_links:
+  - name: "💬 已有反馈"
+    url: https://github.com/BHD110/ss-switch/issues
+    about: "查看 ss-switch 已提交的问题和功能请求。"

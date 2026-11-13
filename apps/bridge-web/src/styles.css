@@ -1,3 +1,11 @@
+@font-face {
+  font-family: "DingTalk JinBu";
+  src: url("./assets/fonts/DingTalkJinBu.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 :root {
   --bg: #eaf0f5;
   --bg-elevated: #f6f9fb;
@@ -179,18 +187,40 @@ button:disabled {
 }
 
 .brand-name {
-  font-size: 15px;
-  font-weight: 650;
+  font-family: "DingTalk JinBu", "Segoe UI", sans-serif;
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1.2;
 }
 
 .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
   color: var(--muted);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  padding: 5px 10px;
-  font-size: 12px;
+  padding: 0;
   background: var(--bg-elevated);
-  white-space: nowrap;
+}
+
+.icon-button svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.9;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .icon-button:hover:not(:disabled) {
@@ -313,6 +343,9 @@ button:disabled {
 }
 
 .ghost-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   color: var(--faint);
   font-size: 11px;
   padding: 2px 4px;
@@ -365,11 +398,63 @@ button:disabled {
 }
 
 .topbar {
+  position: relative;
   min-height: 72px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 12px 22px;
+}
+
+.desktop-titlebar {
+  min-height: 84px;
+  padding: 38px 0 10px 22px;
+}
+
+.desktop-shell .rail-head,
+.desktop-titlebar {
+  -webkit-app-region: drag;
+  app-region: drag;
+  user-select: none;
+}
+
+.desktop-shell .rail-head .icon-button,
+.desktop-titlebar .top-actions,
+.window-controls {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.window-controls {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  height: 32px;
+}
+
+.window-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 32px;
+  color: var(--muted);
+}
+
+.window-control svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.8;
+}
+
+.window-control:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.window-control.close:hover {
+  color: #fff;
+  background: #c42b1c;
 }
 
 .crumbs {
@@ -389,15 +474,54 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-left: auto;
+}
+
+.language-button {
+  white-space: nowrap;
+}
+
+.language-flag {
+  display: block;
+  flex: none;
+  width: 20px;
+  height: 15px;
+  object-fit: cover;
+  border: 1px solid var(--line-strong);
 }
 
 .ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border: 1px solid var(--line);
   color: var(--muted);
   border-radius: var(--radius-sm);
   padding: 6px 12px;
   font-size: 12px;
   background: var(--bg-elevated);
+}
+
+.square-button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+
+.ghost svg,
+.primary svg,
+.ghost-link svg,
+.load-more svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.9;
+}
+
+.square-button svg {
+  width: 16px;
+  height: 16px;
 }
 
 .ghost:hover:not(:disabled) {
@@ -407,6 +531,10 @@ button:disabled {
 }
 
 .primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border-radius: var(--radius-sm);
   padding: 7px 14px;
   font-size: 12px;
@@ -864,7 +992,10 @@ button:disabled {
 
 .load-more {
   margin: 16px auto;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border: 1px solid var(--line);
   color: var(--muted);
   border-radius: 999px;

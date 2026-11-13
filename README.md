@@ -74,11 +74,15 @@ pnpm build
 pnpm start          # 以开发方式启动（读取真实本地数据）
 ```
 
-打包好的程序：目录版 `release/win-unpacked/ss switch.exe`，免安装版 `release/ss-switch-0.1.0-x64.exe`。重新打包：
+打包好的程序：目录版 `release/win-unpacked/ss switch.exe`，免安装版 `release/ss-switch-<版本号>-x64.exe`，安装版 `release/ss-switch-<版本号>-x64-setup.exe`。重新打包：
 
 ```bash
 pnpm package:win
+pnpm package:portable
+pnpm package:installer  # 需要本机安装 Inno Setup 6
 ```
+
+在 GitHub 仓库的 **Actions → Build Windows release → Run workflow** 中填写 `x.y.z` 格式版本号。默认只构建，两个 exe 可在该次运行的 Artifacts 中下载；勾选 **Publish a GitHub Release** 后，工作流还会创建 `v<版本号>` 标签和 Release 并附上两个 exe。已存在的同名标签不会被覆盖。构建过程中临时设置桌面包版本号，不会提交版本变更。
 
 首次启动会扫描四个 Agent 的本地数据，缓存在 `%APPDATA%\ss switch\bridge.db`。之后点“刷新”重新扫描。
 
@@ -129,6 +133,7 @@ pnpm lint          # Biome
 pnpm build         # 主进程 + 渲染层
 pnpm package:win       # Windows 目录版（release/win-unpacked）
 pnpm package:portable  # 单文件免安装版（release/ss-switch-*.exe）
+pnpm package:installer   # Inno Setup 安装版（需要 Inno Setup 6）
 ```
 
 ## 商业合作请加微信

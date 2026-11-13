@@ -1,4 +1,5 @@
 import type { HostId, HostStatus } from "@bridge/contracts";
+import { RefreshCw } from "lucide-react";
 
 import { HOST_LABEL, HOST_ORDER, num, timeAgo } from "../format";
 import { useI18n } from "../i18n";
@@ -30,7 +31,7 @@ export function HostRail({ hosts, activeHost, scannedAt, onSelect, onRefresh, bu
       <div className="rail-head">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true" />
-          <div className="brand-name">ss switch</div>
+          <div className="brand-name">SS Switch</div>
         </div>
         <button
           type="button"
@@ -38,8 +39,9 @@ export function HostRail({ hosts, activeHost, scannedAt, onSelect, onRefresh, bu
           onClick={onRefresh}
           disabled={busy}
           title={t("rescanTitle")}
+          aria-label={busy ? t("scanning") : t("rescanTitle")}
         >
-          {busy ? t("scanning") : t("refresh")}
+          <RefreshCw aria-hidden="true" className={busy ? "spinning" : undefined} />
         </button>
       </div>
 
