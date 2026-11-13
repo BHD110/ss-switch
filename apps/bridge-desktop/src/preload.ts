@@ -18,6 +18,15 @@ const api: BridgeApi = {
   openSessionFolder: (ref, locale) => invoke(IPC.openSessionFolder, ref, locale),
   divergence: () => invoke(IPC.divergence),
   appInfo: () => invoke(IPC.appInfo),
+  windowMinimize: () => ipcRenderer.send(IPC.windowMinimize),
+  windowToggleMaximize: () => ipcRenderer.send(IPC.windowToggleMaximize),
+  windowClose: () => ipcRenderer.send(IPC.windowClose),
+  windowState: () => invoke(IPC.windowState),
+  onWindowStateChanged: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, maximized: boolean) => listener(maximized);
+    ipcRenderer.on(IPC.windowStateChanged, handler);
+    return () => ipcRenderer.removeListener(IPC.windowStateChanged, handler);
+  },
 };
 
 // contextBridge is required: the renderer never gets ipcRenderer itself.

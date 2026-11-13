@@ -1,3 +1,11 @@
+@font-face {
+  font-family: "DingTalk JinBu";
+  src: url("./assets/fonts/DingTalkJinBu.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 :root {
   --bg: #eaf0f5;
   --bg-elevated: #f6f9fb;
@@ -179,8 +187,10 @@ button:disabled {
 }
 
 .brand-name {
-  font-size: 15px;
-  font-weight: 650;
+  font-family: "DingTalk JinBu", "Segoe UI", sans-serif;
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1.2;
 }
 
 .icon-button {
@@ -388,11 +398,63 @@ button:disabled {
 }
 
 .topbar {
+  position: relative;
   min-height: 72px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 12px 22px;
+}
+
+.desktop-titlebar {
+  min-height: 84px;
+  padding: 38px 0 10px 22px;
+}
+
+.desktop-shell .rail-head,
+.desktop-titlebar {
+  -webkit-app-region: drag;
+  app-region: drag;
+  user-select: none;
+}
+
+.desktop-shell .rail-head .icon-button,
+.desktop-titlebar .top-actions,
+.window-controls {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.window-controls {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  height: 32px;
+}
+
+.window-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 32px;
+  color: var(--muted);
+}
+
+.window-control svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.8;
+}
+
+.window-control:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.window-control.close:hover {
+  color: #fff;
+  background: #c42b1c;
 }
 
 .crumbs {
@@ -412,6 +474,7 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-left: auto;
 }
 
 .language-button {

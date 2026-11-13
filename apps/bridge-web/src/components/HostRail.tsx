@@ -31,7 +31,7 @@ export function HostRail({ hosts, activeHost, scannedAt, onSelect, onRefresh, bu
       <div className="rail-head">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true" />
-          <div className="brand-name">ss switch</div>
+          <div className="brand-name">SS Switch</div>
         </div>
         <button
           type="button"

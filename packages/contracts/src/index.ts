@@ -243,6 +243,11 @@ export const IPC = {
   openSessionFolder: "bridge:open-session-folder",
   divergence: "bridge:divergence",
   appInfo: "bridge:app-info",
+  windowMinimize: "bridge:window-minimize",
+  windowToggleMaximize: "bridge:window-toggle-maximize",
+  windowClose: "bridge:window-close",
+  windowState: "bridge:window-state",
+  windowStateChanged: "bridge:window-state-changed",
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
@@ -262,6 +267,11 @@ export interface BridgeApi {
   openSessionFolder(ref: SessionRef, locale?: UiLocale): Promise<{ ok: boolean; error?: string }>;
   divergence(): Promise<DivergenceInfo[]>;
   appInfo(): Promise<{ version: string; userData: string; home: string }>;
+  windowMinimize(): void;
+  windowToggleMaximize(): void;
+  windowClose(): void;
+  windowState(): Promise<boolean>;
+  onWindowStateChanged(listener: (maximized: boolean) => void): () => void;
 }
 
 /** Tools whose results are safe to re-render from stored text. */

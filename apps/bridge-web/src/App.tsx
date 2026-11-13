@@ -8,7 +8,7 @@ import type {
   StoredSession,
   TxSummary,
 } from "@bridge/contracts";
-import { History, Moon, Sun } from "lucide-react";
+import { Copy, History, Minus, Moon, Square, Sun, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { bridge, hasBridge } from "./api";
@@ -47,6 +47,7 @@ export function App() {
   const [history, setHistory] = useState<TxSummary[]>([]);
   const [divergence, setDivergence] = useState<DivergenceInfo[]>([]);
   const [busyTx, setBusyTx] = useState("");
+  const [maximized, setMaximized] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => {
     const stored = localStorage.getItem("bridge-theme");
     return stored === "dark" ? "dark" : "light";
@@ -58,6 +59,14 @@ export function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("bridge-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const api = bridge();
+    const unsubscribe = api.onWindowStateChanged(setMaximized);
+    void api.windowState().then(setMaximized);
+    return unsubscribe;
+  }, [ready]);
 
   const refresh = useCallback(async (force = true) => {
     if (!hasBridge()) return;
@@ -199,7 +208,7 @@ export function App() {
   );
 
   return (
-    <div className="app">
+    <div className={ready ? "app desktop-shell" : "app"}>
       <HostRail
         hosts={hosts}
         activeHost={activeHost}
@@ -209,7 +218,7 @@ export function App() {
         busy={scanning}
       />
       <main className="workspace">
-        <div className="topbar">
+        <div className={ready ? "topbar desktop-titlebar" : "topbar"}>
           <div className="crumbs">
             <h1>{activeHost === "all" ? t("allSessions") : HOST_LABEL[activeHost]}</h1>
             {!ready && <span className="badge bad">{t("desktopOnly")}</span>}
@@ -255,6 +264,37 @@ export function App() {
               {theme === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
             </button>
           </div>
+          {ready && (
+            <div className="window-controls">
+              <button
+                type="button"
+                className="window-control"
+                onClick={() => bridge().windowMinimize()}
+                title={t("minimize")}
+                aria-label={t("minimize")}
+              >
+                <Minus aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="window-control"
+                onClick={() => bridge().windowToggleMaximize()}
+                title={maximized ? t("restore") : t("maximize")}
+                aria-label={maximized ? t("restore") : t("maximize")}
+              >
+                {maximized ? <Copy aria-hidden="true" /> : <Square aria-hidden="true" />}
+              </button>
+              <button
+                type="button"
+                className="window-control close"
+                onClick={() => bridge().windowClose()}
+                title={t("close")}
+                aria-label={t("close")}
+              >
+                <X aria-hidden="true" />
+              </button>
+            </div>
+          )}
         </div>
         <div className="panes">
           <SessionList
