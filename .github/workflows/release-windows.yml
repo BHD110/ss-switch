@@ -1,0 +1,118 @@
+name: Build Windows release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (x.y.z, without v)"
+        required: true
+        type: string
+      publish:
+        description: "Publish a GitHub Release"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Set build version
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ inputs.version }}
+        run: |
+          if ($env:APP_VERSION -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
+            throw "Version must be in x.y.z format."
+          }
+          $path = "apps/bridge-desktop/package.json"
+          $package = Get-Content $path -Raw | ConvertFrom-Json
+          $package.version = $env:APP_VERSION
+          $package | ConvertTo-Json -Depth 20 | Set-Content $path -Encoding utf8
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Test
+        run: pnpm test
+      - name: Build portable executable
+        run: pnpm package:portable
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+      - name: Build Inno Setup installer
+        run: pnpm package:installer
+      - name: Verify release assets
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ inputs.version }}
+        run: |
+          $assets = @(
+            "release/ss-switch-${env:APP_VERSION}-x64.exe",
+            "release/ss-switch-${env:APP_VERSION}-x64-setup.exe"
+          )
+          foreach ($asset in $assets) {
+            if (-not (Test-Path $asset)) { throw "Missing release asset: $asset" }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ss-switch-${{ inputs.version }}-windows
+          path: |
+            release/ss-switch-${{ inputs.version }}-x64.exe
+            release/ss-switch-${{ inputs.version }}-x64-setup.exe
+          if-no-files-found: error
+
+  publish:
+    if: ${{ inputs.publish }}
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ss-switch-${{ inputs.version }}-windows
+          path: release
+      - name: Ensure version tag is unused
+        shell: bash
+        env:
+          APP_VERSION: ${{ inputs.version }}
+        run: |
+          status=0
+          git ls-remote --exit-code --tags origin "refs/tags/v${APP_VERSION}" || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "Tag v${APP_VERSION} already exists" >&2
+            exit 1
+          fi
+          if [ "$status" -ne 2 ]; then
+            echo "Could not check remote tag (exit $status)" >&2
+            exit "$status"
+          fi
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "v${APP_VERSION}" \
+            "release/ss-switch-${APP_VERSION}-x64.exe" \
+            "release/ss-switch-${APP_VERSION}-x64-setup.exe" \
+            --target "$GITHUB_SHA" \
+            --title "ss switch v${APP_VERSION}" \
+            --generate-notes
