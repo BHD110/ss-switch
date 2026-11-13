@@ -8,6 +8,7 @@ import type {
   StoredSession,
   TxSummary,
 } from "@bridge/contracts";
+import { History, Moon, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { bridge, hasBridge } from "./api";
@@ -20,6 +21,11 @@ import { HOST_LABEL } from "./format";
 import { useI18n } from "./i18n";
 
 type Theme = "dark" | "light";
+
+const LANGUAGE_FLAGS = {
+  en: new URL("./assets/flags/us.svg", import.meta.url).href,
+  zh: new URL("./assets/flags/cn.svg", import.meta.url).href,
+};
 
 export function App() {
   const { lang, setLang, t } = useI18n();
@@ -214,23 +220,39 @@ export function App() {
                 {t("divergenceBadge", { n: divergence.length })}
               </span>
             )}
-            <button type="button" className="ghost" onClick={() => setHistoryOpen(true)}>
-              {t("history")}
-            </button>
             <button
               type="button"
-              className="ghost"
+              className="ghost language-button"
               onClick={() => setLang(lang === "zh" ? "en" : "zh")}
               title={t("langSwitchTitle")}
+              aria-label={`${t("langSwitchTitle")}: ${t("langSwitchLabel")}`}
             >
+              <img
+                className="language-flag"
+                src={lang === "zh" ? LANGUAGE_FLAGS.en : LANGUAGE_FLAGS.zh}
+                alt=""
+                width="20"
+                height="15"
+              />
               {t("langSwitchLabel")}
             </button>
             <button
               type="button"
-              className="ghost"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="ghost square-button"
+              onClick={() => setHistoryOpen(true)}
+              title={t("history")}
+              aria-label={t("history")}
             >
-              {theme === "dark" ? t("lightMode") : t("darkMode")}
+              <History aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="ghost square-button"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              title={theme === "dark" ? t("lightMode") : t("darkMode")}
+              aria-label={theme === "dark" ? t("lightMode") : t("darkMode")}
+            >
+              {theme === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
             </button>
           </div>
         </div>

@@ -8,6 +8,7 @@ import type {
   StoredSession,
   TxSummary,
 } from "@bridge/contracts";
+import { Check, Copy, RefreshCw, RotateCcw, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { bridge } from "../api";
@@ -214,8 +215,14 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
               {HOST_LABEL[source.host]} · {shortPath(source.cwd, 2, t)}
             </div>
           </div>
-          <button type="button" className="icon-button" onClick={onClose} title={t("close")}>
-            {t("close")}
+          <button
+            type="button"
+            className="icon-button"
+            onClick={onClose}
+            title={t("close")}
+            aria-label={t("close")}
+          >
+            <X aria-hidden="true" />
           </button>
         </header>
 
@@ -270,10 +277,12 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
                 <>
                   {result.openCommand && (
                     <button type="button" className="primary" onClick={copyCommand}>
+                      {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
                       {copied ? t("cmdCopied") : t("copyOpenCommand")}
                     </button>
                   )}
                   <button type="button" className="ghost" onClick={undo} disabled={busy}>
+                    <RotateCcw aria-hidden="true" />
                     {t("undoThisCopy")}
                   </button>
                 </>
@@ -439,6 +448,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
 
             <div className="sheet-actions">
               <button type="button" className="primary" onClick={confirm} disabled={blocked}>
+                <Copy aria-hidden="true" />
                 {busy
                   ? t("copying")
                   : mode === "overwrite"
@@ -452,6 +462,7 @@ export function SwitchSheet({ open, source, hosts, sessions, history, onClose, o
                   onClick={() => setCheckAttempt((n) => n + 1)}
                   disabled={busy}
                 >
+                  <RefreshCw aria-hidden="true" />
                   {t("recheck")}
                 </button>
               )}

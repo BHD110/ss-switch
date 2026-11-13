@@ -1,4 +1,5 @@
 import type { DivergenceInfo, TxSummary } from "@bridge/contracts";
+import { FolderOpen, RotateCcw, X } from "lucide-react";
 
 import { formatTime, HOST_LABEL, stateLabel } from "../format";
 import { type Translate, useI18n } from "../i18n";
@@ -47,8 +48,14 @@ export function HistoryPanel({
             <h2>{t("historyTitle")}</h2>
             <div className="sheet-sub">{t("historySubtitle")}</div>
           </div>
-          <button type="button" className="icon-button" onClick={onClose}>
-            {t("close")}
+          <button
+            type="button"
+            className="icon-button"
+            onClick={onClose}
+            title={t("close")}
+            aria-label={t("close")}
+          >
+            <X aria-hidden="true" />
           </button>
         </header>
         <div className="sheet-body">
@@ -90,6 +97,7 @@ export function HistoryPanel({
                     className="ghost-link"
                     onClick={() => onOpenFolder(tx.backupDir!)}
                   >
+                    <FolderOpen aria-hidden="true" />
                     {t("backupButton")}
                   </button>
                 )}
@@ -100,6 +108,7 @@ export function HistoryPanel({
                     onClick={() => onUndo(tx.id)}
                     disabled={busyTx === tx.id}
                   >
+                    <RotateCcw aria-hidden="true" />
                     {busyTx === tx.id ? t("undoing") : t("undoButton")}
                   </button>
                 )}
